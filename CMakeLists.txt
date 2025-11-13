@@ -25,9 +25,34 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 
-# Do not build HEMCO standalone executable
-set(HEMCO_EXTERNAL_CONFIG TRUE)
-set(GCCLASSIC_WRAPPER TRUE)
+# Default: build both NEXUS and HEMCO standalone.
+# - By default we *enable* the internal HEMCO standalone configuration so that
+#   `hemco_standalone` is built from this superproject.
+# - If you want the old behavior (no standalone exe; external HEMCO config),
+#   configure with: -DHEMCO_EXTERNAL_CONFIG=ON (or set it in your cache).
+#
+# NOTE:
+# - When HEMCO_EXTERNAL_CONFIG=OFF (default here), HEMCO/CMakeLists.txt
+#   enters its standalone block, sets HEMCO_INTERFACE=standalone, and
+#   sets HEMCO_EXE_TARGETS to include hemco_standalone, so `make` will
+#   build both NEXUS and hemco_standalone.
+# - When HEMCO_EXTERNAL_CONFIG=ON, HEMCO is treated as externally
+#   configured (e.g., GCClassic/MAPL wrapper mode) and hemco_standalone
+#   is not built.
+include(CheckCXXSymbolExists) # harmless no-op; ensures policy consistency on some systems
+
+if(NOT DEFINED HEMCO_EXTERNAL_CONFIG)
+  # Default to standalone mode: build hemco_standalone.
+  set(HEMCO_EXTERNAL_CONFIG OFF CACHE BOOL "Use external HEMCO config (no standalone exe)" FORCE)
+endif()
+
+# If external-config mode is explicitly requested, enable GCClassic wrapper;
+# otherwise leave GCCLASSIC_WRAPPER off by default.
+if(HEMCO_EXTERNAL_CONFIG)
+  set(GCCLASSIC_WRAPPER TRUE CACHE BOOL "Build HEMCO in GCClassic-wrapper mode" FORCE)
+else()
+  set(GCCLASSIC_WRAPPER FALSE CACHE BOOL "GCClassic wrapper disabled in standalone mode" FORCE)
+endif()
 
 if(CMAKE_BUILD_TYPE)
   string(TOUPPER ${CMAKE_BUILD_TYPE} UPPER_CMAKE_BUILD_TYPE)
