@@ -11,7 +11,7 @@ program app
 
   implicit none
 
-  character(len=*), parameter :: NEXUS_options(12,2) = reshape( &
+  character(len=*), parameter :: NEXUS_options(14,2) = reshape( &
     (/ &
     "-c           ", "c:           ", &
     "--config     ", "c:           ", &
@@ -23,9 +23,11 @@ program app
     "--wr         ", "wr           ", &
     "-o           ", "o:           ", &
     "--output     ", "o:           ", &
+    "--hemco-dryrun", "hemco_dryrun", &
+    "--hemco-dry-run", "hemco_dryrun", &
     "-h           ", "h            ", &
     "--help       ", "h            " &
-    /), (/ 12, 2 /), order=(/ 2, 1 /))
+    /), (/ 14, 2 /), order=(/ 2, 1 /))
 
   character(len=*), parameter :: usage = &
     "Usage: nexus &
@@ -44,6 +46,7 @@ program app
   integer :: idx, ind, item
   integer :: debugLevel
   logical :: writeRestart
+  logical :: hemcoDryRun
   integer :: ibuf(2)
   character(ESMF_MAXSTR) :: ConfigFile
   character(ESMF_MAXSTR) :: ReGridFile
@@ -90,8 +93,9 @@ program app
   ReGridFile = ""
   OutputFile = ""
 
-  debugLevel = 0
+  debugLevel   = 0
   writeRestart = .false.
+  hemcoDryRun  = .false.
 
   localrc = ESMF_SUCCESS
 
@@ -122,6 +126,8 @@ program app
           debugLevel = 1
          case ("wr")
           writeRestart = .true.
+         case ("hemco_dryrun")
+          hemcoDryRun = .true.
          case ("h")
           print "(a)", usage
           stop
@@ -134,11 +140,12 @@ program app
     print "(a)", description
     call print_sep()
 
-    print "('ConfigFile = ', a)", trim(ConfigFile)
-    print "('ReGridFile = ', a)", trim(ReGridFile)
-    print "('debugLevel = ', i0)", debugLevel
-    print "('OutputFile = ', a)", trim(OutputFile)
-    print "('petCount   = ', i0)", petCount
+    print "('ConfigFile      = ', a)", trim(ConfigFile)
+    print "('ReGridFile      = ', a)", trim(ReGridFile)
+    print "('debugLevel      = ', i0)", debugLevel
+    print "('OutputFile      = ', a)", trim(OutputFile)
+    print "('HEMCO dry-run   = ', l1)", hemcoDryRun
+    print "('petCount        = ', i0)", petCount
     call print_sep()
   end if
 
@@ -169,8 +176,13 @@ program app
   OutputFile = sbuf(3)
 
   !-----------------------------------------------------------------------------
+  ! Override CLI dry-run flag from environment if requested.
+  ! NEXUS_HEMCO_DRYRUN=1 or "true" (case-insensitive) enables dry-run.
+  call get_hemco_dryrun_from_env(hemcoDryRun)
 
-  call init_cap(ConfigFile, ReGridFile, OutputFile, debugLevel, writeRestart, rc=rc)
+  !-----------------------------------------------------------------------------
+
+  call init_cap(ConfigFile, ReGridFile, OutputFile, debugLevel, writeRestart, hemcoDryRun, rc=rc)
 
   ! -> CREATE THE DRIVER
   drvComp = ESMF_GridCompCreate(name="driver", rc=rc)
@@ -241,6 +253,39 @@ program app
   print "('NEXUS: ', a)", "Done"
 
 contains
+
+  subroutine get_hemco_dryrun_from_env(hemcoDryRun)
+    logical, intent(inout) :: hemcoDryRun
+
+    character(len=ESMF_MAXSTR) :: envval
+    integer :: length, rc_local
+
+    call ESMF_UtilGetEnv("NEXUS_HEMCO_DRYRUN", envval, length, rc=rc_local)
+    if (rc_local == ESMF_SUCCESS .and. length > 0) then
+      select case (adjustl(lowercase(envval(1:length))))
+       case ("1","true","yes","y","on")
+        hemcoDryRun = .true.
+       case ("0","false","no","n","off")
+        ! explicit disable
+        hemcoDryRun = .false.
+      end select
+    end if
+  end subroutine get_hemco_dryrun_from_env
+
+  !> Simple lowercase helper (ASCII-safe for flags).
+  pure function lowercase(str) result(out)
+    character(len=*), intent(in) :: str
+    character(len=len(str)) :: out
+    integer :: i, ia
+    do i = 1, len(str)
+      ia = iachar(str(i:i))
+      if (ia >= iachar('A') .and. ia <= iachar('Z')) then
+        out(i:i) = achar(ia + 32)
+      else
+        out(i:i) = str(i:i)
+      end if
+    end do
+  end function lowercase
 
   !> By default, 60 hyphens.
   subroutine print_sep(char, n)

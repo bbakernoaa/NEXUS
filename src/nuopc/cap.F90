@@ -56,6 +56,8 @@ module nexus_cap
   !! True if either `do_Regrid` or `do_Debug` is true.
   logical :: alwaysWriteRestartFile = .false.
   !! Even in NEXUS mode (`do_NEXUS`)
+  logical :: hemcoDryRun = .false.
+  !! If true, enable HEMCO dry-run behavior for NUOPC/NEXUS.
 
   ! Start and end time of simulation
   integer :: T_YY(2), T_MM(2), T_DD(2)
@@ -393,46 +395,51 @@ contains
       rcToReturn=rc)) return
 
     ! Phase 2: Compute emissions (skip for dry-run)
-    call HCO_Run( HcoState, 2, localrc )
-    if (nxs_error_log(localrc, msg='Error encountered in routine "Hco_Run", phase 2!', &
-      line=__LINE__, &
-      file=__FILE__, &
-      rcToReturn=rc)) return
+    if (.not. hemcoDryRun) then
+      call HCO_Run( HcoState, 2, localrc )
+      if (nxs_error_log(localrc, msg='Error encountered in routine "Hco_Run", phase 2!', &
+        line=__LINE__, &
+        file=__FILE__, &
+        rcToReturn=rc)) return
+    end if
 
     ! ================================================================
     ! Run HCO extensions
     ! ================================================================
 
-    ! Set ExtState fields (skip for dry-run)
-    call hco_ext_set_fields ( HcoState, HcoExtState, localrc )
-    if (nxs_error_log(localrc, msg='Error encountered in routine "ExtState_SetFields"!', &
-      line=__LINE__, &
-      file=__FILE__, &
-      rcToReturn=rc)) return
+    if (.not. hemcoDryRun) then
+      ! Set ExtState fields
+      call hco_ext_set_fields ( HcoState, HcoExtState, localrc )
+      if (nxs_error_log(localrc, msg='Error encountered in routine "ExtState_SetFields"!', &
+        line=__LINE__, &
+        file=__FILE__, &
+        rcToReturn=rc)) return
 
-    ! Update ExtState fields (skip for dry-run)
-    call hco_ext_update_fields( HcoState, HcoExtState, localrc )
-    if (nxs_error_log(localrc, msg='Error encountered in routine "ExtState_Update_Fields"!', &
-      line=__LINE__, &
-      file=__FILE__, &
-      rcToReturn=rc)) return
+      ! Update ExtState fields
+      call hco_ext_update_fields( HcoState, HcoExtState, localrc )
+      if (nxs_error_log(localrc, msg='Error encountered in routine "ExtState_Update_Fields"!', &
+        line=__LINE__, &
+        file=__FILE__, &
+        rcToReturn=rc)) return
 
-    ! Execute all enabled emission extensions. Emissions will be
-    ! added to corresponding flux arrays in HcoState.
-    call HCOX_Run ( HcoState, HcoExtState, localrc )
-    if (nxs_error_log(localrc, msg='Error encountered in routine "HCOX_Run"!', &
-      line=__LINE__, &
-      file=__FILE__, &
-      rcToReturn=rc)) return
+      ! Execute all enabled emission extensions
+      call HCOX_Run ( HcoState, HcoExtState, localrc )
+      if (nxs_error_log(localrc, msg='Error encountered in routine "HCOX_Run"!', &
+        line=__LINE__, &
+        file=__FILE__, &
+        rcToReturn=rc)) return
+    end if
 
     !=================================================================
-    ! Update all autofill diagnostics (skip for dry-run)
+    ! Update all autofill diagnostics
     !=================================================================
-    call HcoDiagn_AutoUpdate ( HcoState, localrc )
-    if (nxs_error_log(localrc, msg='Error encountered in routine "HCOX_AutoUpdate"!', &
-      line=__LINE__, &
-      file=__FILE__, &
-      rcToReturn=rc)) return
+    if (.not. hemcoDryRun) then
+      call HcoDiagn_AutoUpdate ( HcoState, localrc )
+      if (nxs_error_log(localrc, msg='Error encountered in routine "HCOX_AutoUpdate"!', &
+        line=__LINE__, &
+        file=__FILE__, &
+        rcToReturn=rc)) return
+    end if
 
     !=================================================================
     ! Update NEXUS Diagnostic state
@@ -448,7 +455,7 @@ contains
     !=================================================================
     ! Write NEXUS Diagnostic state
     !=================================================================
-    if (do_Debug) then
+    if (do_Debug .and. .not. hemcoDryRun) then
       call nxs_state_write( NXS_Diag_State, DiagFile, timeSlice=timeSlice, rc=localrc )
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__,  &
@@ -456,7 +463,7 @@ contains
         rcToReturn=rc)) return  ! bail out
     end if
 
-    if (do_Regrid) then
+    if (do_Regrid .and. .not. hemcoDryRun) then
       !=================================================================
       ! Update NEXUS Export state
       !=================================================================
@@ -483,7 +490,7 @@ contains
 
   !> NEXUS initialization
   !> (read HEMCO config, initialize HEMCO state, create grid objects, etc.)
-  subroutine nxs_init(ConfigFile, ReGridFile, OutputFile, debugLevel, writeRestart, rc)
+  subroutine nxs_init(ConfigFile, ReGridFile, OutputFile, debugLevel, writeRestart, hemcoDryRunIn, rc)
     use HCO_Config_Mod,  only: Config_ReadFile
     use HCO_Driver_Mod,  only: HCO_Init
     use HCO_EXTLIST_Mod, only: GetExtOpt, CoreNr
@@ -497,6 +504,7 @@ contains
     character(len=*),  intent(in)  :: OutputFile
     integer,           intent(in)  :: debugLevel
     logical,           intent(in)  :: writeRestart
+    logical,           intent(in)  :: hemcoDryRunIn
     integer, optional, intent(out) :: rc
 
     integer :: localrc
@@ -529,12 +537,16 @@ contains
     do_Debug  = (debugLevel > 0)
     do_NEXUS  = (do_Debug .or. do_Regrid)
     alwaysWriteRestartFile = writeRestart
+    hemcoDryRun = hemcoDryRunIn
 
     if (len_trim(OutputFile) > 0) ExptFile = OutputFile
 
     if ( am_I_Root ) then
-      if ( do_Debug  ) print "('NEXUS: ', a)", 'Writing debug emissions to: '//trim(DiagFile)
-      if ( do_Regrid ) print "('NEXUS: ', a)", 'Writing regridded emissions to: '//trim(ExptFile)
+      if ( hemcoDryRun ) then
+        print "('NEXUS: HEMCO dry-run mode ENABLED (no emissions or diagnostics will be written)')"
+      end if
+      if ( do_Debug  .and. .not. hemcoDryRun ) print "('NEXUS: ', a)", 'Writing debug emissions to: '//trim(DiagFile)
+      if ( do_Regrid .and. .not. hemcoDryRun ) print "('NEXUS: ', a)", 'Writing regridded emissions to: '//trim(ExptFile)
     end if
 
     !=======================================================================
@@ -543,7 +555,7 @@ contains
     ! etc.) based upon the specifications in the configuration file.
     !=======================================================================
     call Config_ReadFile( am_I_Root, HcoConfig, ConfigFile, &
-      0, localrc, IsDryRun=.false. )
+      0, localrc, IsDryRun=hemcoDryRun )
     if (nxs_error_log(localrc, msg='Error encountered in routine "Config_Readfile!"', &
       line=__LINE__, &
       file=__FILE__, &
@@ -683,8 +695,8 @@ contains
 
     !--------------------------------------------------------------------
     ! For regular simulations, read diagnostics configuration file
-    ! and define diagnostic variables for output
-    !--------------------------------------------------------------------
+    ! and define diagnostic variables for output. For dry-run we still
+    ! define metadata but downstream compute/output will be gated.
     call Define_Diagnostics( HcoState, localrc )
     if (nxs_error_log(localrc, msg='Error encountered in routine "Define_Diagnostics"!', &
       line=__LINE__, &
@@ -782,7 +794,7 @@ contains
       file=__FILE__, &
       rcToReturn=rc)) return
 
-    if (do_NEXUS .and. alwaysWriteRestartFile) then
+    if (do_NEXUS .and. alwaysWriteRestartFile .and. .not. hemcoDryRun) then
       call HcoDiagn_Write( HcoState, .TRUE.,  localrc )
       if (nxs_error_log(localrc, msg='Error encountered in routine "HcoDiagn_Write"!', &
         line=__LINE__, &
@@ -806,7 +818,9 @@ contains
       rcToReturn=rc)) return
 
     ! Cleanup diagnostics (skip if dry-run)
-    call DiagnBundle_Cleanup( HcoState%Diagn )
+    if (.not. hemcoDryRun) then
+      call DiagnBundle_Cleanup( HcoState%Diagn )
+    end if
 
     ! Deallocate module arrays/pointers
     if ( allocated( XMID    ) ) deallocate ( XMID    )
