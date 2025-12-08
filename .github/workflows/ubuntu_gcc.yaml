@@ -56,6 +56,7 @@ jobs:
           # Ensure MPI with Fortran and OpenMP-capable toolchain
           spack add mpich@3.4.2 %gcc
           spack concretize
+          echo $SPACK_STACK_DIR
           spack install -v --fail-fast --dirty
           spack clean --all
 
