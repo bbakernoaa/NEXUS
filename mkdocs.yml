@@ -38,6 +38,10 @@ plugins:
 
 nav:
   - Home: index.md
+  - User Guide:
+    - Building: building.md
+    - Architecture: architecture.md
+    - HEMCO Integration: hemco.md
   - API:
       - Classes:
           - 'Class List': 'nexus/annotated.md'

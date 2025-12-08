@@ -4,17 +4,21 @@ Welcome to the documentation for NEXUS, the NOAA Emission and Exchange Unified S
 
 ## Overview
 
-NEXUS is a hybrid project utilizing Fortran, C++, and Python, built upon the ESMF/NUOPC framework. This documentation covers the Fortran components of the system.
+NEXUS is a hybrid project utilizing Fortran, C++, and Python, built upon the ESMF/NUOPC framework. Its primary purpose is to provide a unified system for calculating and exchanging emissions data for atmospheric modeling.
 
-## Components
+## Documentation Sections
 
-The system consists of several key modules:
-
-* **nexus_cap**: The NUOPC Component/Cap.
-* **nexus_driver**: The NUOPC Driver.
-* **nexus_io_mod**: Handles I/O operations.
-* **app**: The main application driver.
+*   **[Building NEXUS](building.md)**: Instructions on how to compile and install the system.
+*   **[Architecture](architecture.md)**: An overview of the system's design and core components.
+*   **[HEMCO Integration](hemco.md)**: Details on the underlying emissions component.
+*   **[API Documentation](nexus/annotated.md)**: Auto-generated documentation for the Fortran source code.
 
 ## Getting Started
 
-Explore the [API documentation](nexus/annotated.md) to learn more about the internal structure and functions.
+To get started with development, clone the repository recursively:
+
+```bash
+git clone --recurse-submodules https://github.com/noaa-oar-arl/NEXUS.git
+```
+
+Refer to the [Building](building.md) guide for compilation steps.
