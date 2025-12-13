@@ -449,7 +449,7 @@ contains
     ! Write NEXUS Diagnostic state
     !=================================================================
     if (do_Debug) then
-      call nxs_state_write( NXS_Diag_State, DiagFile, timeSlice=timeSlice, rc=localrc )
+      call nxs_state_write( NXS_Diag_State, DiagFile, timeSlice=timeSlice, rc=localrc, overwrite=(timeSlice==1) )
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__,  &
         file=__FILE__,  &
@@ -469,7 +469,7 @@ contains
       !=================================================================
       ! Write NEXUS Export state
       !=================================================================
-      call nxs_state_write( NXS_Expt_State, ExptFile, timeSlice=timeSlice, rc=localrc )
+      call nxs_state_write( NXS_Expt_State, ExptFile, timeSlice=timeSlice, rc=localrc, overwrite=(timeSlice==1) )
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__,  &
         file=__FILE__,  &
@@ -718,7 +718,7 @@ contains
     end if
 
     if (do_Debug) then
-      call nxs_write_grid( HCO_Grid, DiagFile, rc=localrc )
+      ! Grid information is now written as part of the FieldBundle
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__,  &
         file=__FILE__,  &
@@ -745,7 +745,7 @@ contains
         rcToReturn=rc)) return  ! bail out
 
       if (do_Debug) then
-        call nxs_write_grid( NXS_Grid, ExptFile, rc=localrc )
+        ! Grid information is now written as part of the FieldBundle
         if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
           line=__LINE__,  &
           file=__FILE__,  &
@@ -783,11 +783,16 @@ contains
       rcToReturn=rc)) return
 
     if (do_NEXUS .and. alwaysWriteRestartFile) then
-      call HcoDiagn_Write( HcoState, .TRUE.,  localrc )
-      if (nxs_error_log(localrc, msg='Error encountered in routine "HcoDiagn_Write"!', &
-        line=__LINE__, &
-        file=__FILE__, &
-        rcToReturn=rc)) return
+      call nxs_diag_state_update( HcoState, NXS_Diag_State, rc=localrc )
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__,  &
+        file=__FILE__,  &
+        rcToReturn=rc)) return  ! bail out
+      call nxs_state_write( NXS_Diag_State, "HEMCO_RESTART.nc", rc=localrc, overwrite=.true. )
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__,  &
+        file=__FILE__,  &
+        rcToReturn=rc)) return  ! bail out
     end if
 
     ! Cleanup HCO core
@@ -3018,11 +3023,12 @@ contains
   end subroutine nxs_expt_state_update
 
   !> Write an ESMF state using `ESMF_FieldWrite`.
-  subroutine nxs_state_write( state, fileName, timeSlice, rc )
+  subroutine nxs_state_write( state, fileName, timeSlice, rc, overwrite )
     type(ESMF_State)               :: state
     character(len=*), intent(in)  :: fileName
     integer, optional, intent(in)  :: timeSlice
     integer, optional, intent(out) :: rc
+    logical, optional, intent(in)  :: overwrite
 
     ! -- local variables
     integer :: localrc
@@ -3032,9 +3038,13 @@ contains
     type(ESMF_StateItem_Flag),  allocatable :: itemTypeList(:)
     type(ESMF_FieldBundle) :: bundle
     type(ESMF_Field), allocatable :: fieldList(:)
+    logical :: overwrite_
 
     ! -- begin
     if (present(rc)) rc = ESMF_SUCCESS
+
+    overwrite_ = .false.
+    if (present(overwrite)) overwrite_ = overwrite
 
     call ESMF_StateGet( state, itemCount=itemCount, rc=localrc )
     if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
@@ -3087,7 +3097,7 @@ contains
         rcToReturn=rc)) return  ! bail out
 
       call ESMF_FieldBundleWrite( bundle, fileName=fileName, &
-        iofmt=ESMF_IOFMT_NETCDF, timeslice=timeSlice, rc=localrc )
+        iofmt=ESMF_IOFMT_NETCDF, timeslice=timeSlice, rc=localrc, overwrite=overwrite_ )
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__, &
         file=__FILE__,  &
