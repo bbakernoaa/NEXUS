@@ -3028,7 +3028,6 @@ contains
     integer :: localrc
     integer :: item, itemCount, fieldCount
     integer :: stat
-    type(ESMF_Field) :: field
     character(len=ESMF_MAXSTR), allocatable :: itemNameList(:)
     type(ESMF_StateItem_Flag),  allocatable :: itemTypeList(:)
     type(ESMF_FieldBundle) :: bundle
@@ -3042,6 +3041,8 @@ contains
       line=__LINE__,  &
       file=__FILE__,  &
       rcToReturn=rc)) return  ! bail out
+
+    if (itemCount == 0) return
 
     allocate(itemNameList(itemCount), itemTypeList(itemCount), stat=stat)
     if (ESMF_LogFoundAllocError(statusToCheck=stat, &
@@ -3057,61 +3058,47 @@ contains
       file=__FILE__,  &
       rcToReturn=rc)) return  ! bail out
 
-    ! Count the number of fields to allocate the fieldList array
-    fieldCount = 0
-    do item = 1, itemCount
-      if (itemTypeList(item) == ESMF_STATEITEM_FIELD) then
-        fieldCount = fieldCount + 1
-      end if
-    end do
-
-    ! Allocate fieldList to hold all the fields
-    allocate(fieldList(fieldCount), stat=stat)
+    ! Allocate fieldList to hold all the fields, over-allocating is fine
+    allocate(fieldList(itemCount), stat=stat)
     if (ESMF_LogFoundAllocError(statusToCheck=stat, &
       msg="Unable to allocate memory", &
       line=__LINE__,  &
       file=__FILE__,  &
       rcToReturn=rc)) return  ! bail out
 
-    ! Collect all fields into fieldList
+    ! Collect all fields into fieldList in a single loop
     fieldCount = 0
     do item = 1, itemCount
       if (itemTypeList(item) == ESMF_STATEITEM_FIELD) then
-        call ESMF_StateGet( state, itemNameList(item), field, rc=localrc )
+        fieldCount = fieldCount + 1
+        call ESMF_StateGet( state, itemNameList(item), fieldList(fieldCount), rc=localrc )
         if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
           line=__LINE__,  &
           file=__FILE__,  &
           rcToReturn=rc)) return ! bail out
-        fieldCount = fieldCount + 1
-        fieldList(fieldCount) = field
       end if
     end do
 
-    bundle = ESMF_FieldBundleCreate( name="NEXUS_bundle", fieldList=fieldList, rc=localrc )
-    if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
-      line=__LINE__,  &
-      file=__FILE__,  &
-      rcToReturn=rc)) return  ! bail out
+    if (fieldCount > 0) then
+      bundle = ESMF_FieldBundleCreate( name="NEXUS_bundle", fieldList=fieldList(1:fieldCount), rc=localrc )
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__,  &
+        file=__FILE__,  &
+        rcToReturn=rc)) return  ! bail out
 
-    ! ! Add all fields to the bundle one by one using ESMF_FieldBundleAddField
-    ! call ESMF_FieldBundleAdd( bundle, fieldList, localrc )
-    ! if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
-    !   line=__LINE__,  &
-    !   file=__FILE__, &
-    !   rcToReturn=rc)) return  ! bail out
+      call ESMF_FieldBundleWrite( bundle, fileName=fileName, &
+        iofmt=ESMF_IOFMT_NETCDF, timeslice=timeSlice, rc=localrc )
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, &
+        file=__FILE__,  &
+        rcToReturn=rc)) return ! bail out
 
-    call ESMF_FieldBundleWrite( bundle, fileName=fileName, &
-      iofmt=ESMF_IOFMT_NETCDF, timeslice=timeSlice, rc=localrc )
-    if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
-      line=__LINE__, &
-      file=__FILE__,  &
-      rcToReturn=rc)) return ! bail out
-
-    call ESMF_FieldBundleDestroy( bundle, rc=localrc )
-    if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
-      line=__LINE__,  &
-      file=__FILE__,  &
-      rcToReturn=rc)) return  ! bail out
+      call ESMF_FieldBundleDestroy( bundle, rc=localrc )
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__,  &
+        file=__FILE__,  &
+        rcToReturn=rc)) return  ! bail out
+    end if
 
     deallocate(itemNameList, itemTypeList, fieldList, stat=stat)
     if (ESMF_LogFoundDeallocError(statusToCheck=stat, &
