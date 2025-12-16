@@ -47,6 +47,8 @@ module nexus_cap
   !! "exportState"
   !! Regridded to the desired output grid.
   type(ESMF_RouteHandle) :: NXS_RouteHandle
+  type(ESMF_FieldBundle) :: NXS_Diag_Bundle
+  type(ESMF_FieldBundle) :: NXS_Expt_Bundle
 
   logical :: do_Regrid = .false.
   !! True if grid file path passed to `init` is not empty string.
@@ -449,7 +451,7 @@ contains
     ! Write NEXUS Diagnostic state
     !=================================================================
     if (do_Debug) then
-      call nxs_state_write( NXS_Diag_State, DiagFile, timeSlice=timeSlice, rc=localrc, overwrite=(timeSlice==1) )
+      call nxs_bundle_write( NXS_Diag_Bundle, DiagFile, timeSlice=timeSlice, rc=localrc, overwrite=(timeSlice==1) )
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__,  &
         file=__FILE__,  &
@@ -469,7 +471,7 @@ contains
       !=================================================================
       ! Write NEXUS Export state
       !=================================================================
-      call nxs_state_write( NXS_Expt_State, ExptFile, timeSlice=timeSlice, rc=localrc, overwrite=(timeSlice==1) )
+      call nxs_bundle_write( NXS_Expt_Bundle, ExptFile, timeSlice=timeSlice, rc=localrc, overwrite=(timeSlice==1) )
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__,  &
         file=__FILE__,  &
@@ -718,7 +720,7 @@ contains
     end if
 
     if (do_Debug) then
-      ! Grid information is now written as part of the FieldBundle
+      NXS_Diag_Bundle = nxs_create_bundle_from_state( NXS_Diag_State, rc=localrc )
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__,  &
         file=__FILE__,  &
@@ -744,13 +746,11 @@ contains
         file=__FILE__,  &
         rcToReturn=rc)) return  ! bail out
 
-      if (do_Debug) then
-        ! Grid information is now written as part of the FieldBundle
-        if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
-          line=__LINE__,  &
-          file=__FILE__,  &
-          rcToReturn=rc)) return  ! bail out
-      end if
+      NXS_Expt_Bundle = nxs_create_bundle_from_state( NXS_Expt_State, rc=localrc )
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__,  &
+        file=__FILE__,  &
+        rcToReturn=rc)) return  ! bail out
     end if
 
   end subroutine nxs_init
@@ -788,7 +788,7 @@ contains
         line=__LINE__,  &
         file=__FILE__,  &
         rcToReturn=rc)) return  ! bail out
-      call nxs_state_write( NXS_Diag_State, "HEMCO_RESTART.nc", rc=localrc, overwrite=.true. )
+      call nxs_bundle_write( NXS_Diag_Bundle, "HEMCO_RESTART.nc", rc=localrc, overwrite=.true. )
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__,  &
         file=__FILE__,  &
@@ -895,6 +895,32 @@ contains
         file=__FILE__,  &
         rcToReturn=rc)) return  ! bail out
       call ESMF_StateDestroy(NXS_Expt_State, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__,  &
+        file=__FILE__,  &
+        rcToReturn=rc)) return  ! bail out
+    end if
+
+    isCreated = ESMF_FieldBundleIsCreated(NXS_Diag_Bundle, rc=localrc)
+    if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+      line=__LINE__,  &
+      file=__FILE__,  &
+      rcToReturn=rc)) return  ! bail out
+    if (isCreated) then
+      call ESMF_FieldBundleDestroy(NXS_Diag_Bundle, rc=localrc)
+      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__,  &
+        file=__FILE__,  &
+        rcToReturn=rc)) return  ! bail out
+    end if
+
+    isCreated = ESMF_FieldBundleIsCreated(NXS_Expt_Bundle, rc=localrc)
+    if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+      line=__LINE__,  &
+      file=__FILE__,  &
+      rcToReturn=rc)) return  ! bail out
+    if (isCreated) then
+      call ESMF_FieldBundleDestroy(NXS_Expt_Bundle, rc=localrc)
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__,  &
         file=__FILE__,  &
@@ -3022,13 +3048,11 @@ contains
 
   end subroutine nxs_expt_state_update
 
-  !> Write an ESMF state using `ESMF_FieldWrite`.
-  subroutine nxs_state_write( state, fileName, timeSlice, rc, overwrite )
+  function nxs_create_bundle_from_state( state, rc ) result ( bundle )
     type(ESMF_State)               :: state
-    character(len=*), intent(in)  :: fileName
-    integer, optional, intent(in)  :: timeSlice
     integer, optional, intent(out) :: rc
-    logical, optional, intent(in)  :: overwrite
+
+    type(ESMF_FieldBundle) :: bundle
 
     ! -- local variables
     integer :: localrc
@@ -3036,15 +3060,9 @@ contains
     integer :: stat
     character(len=ESMF_MAXSTR), allocatable :: itemNameList(:)
     type(ESMF_StateItem_Flag),  allocatable :: itemTypeList(:)
-    type(ESMF_FieldBundle) :: bundle
     type(ESMF_Field), allocatable :: fieldList(:)
-    logical :: overwrite_
 
-    ! -- begin
     if (present(rc)) rc = ESMF_SUCCESS
-
-    overwrite_ = .false.
-    if (present(overwrite)) overwrite_ = overwrite
 
     call ESMF_StateGet( state, itemCount=itemCount, rc=localrc )
     if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
@@ -3095,19 +3113,6 @@ contains
         line=__LINE__,  &
         file=__FILE__,  &
         rcToReturn=rc)) return  ! bail out
-
-      call ESMF_FieldBundleWrite( bundle, fileName=fileName, &
-        iofmt=ESMF_IOFMT_NETCDF, timeslice=timeSlice, rc=localrc, overwrite=overwrite_ )
-      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
-        line=__LINE__, &
-        file=__FILE__,  &
-        rcToReturn=rc)) return ! bail out
-
-      call ESMF_FieldBundleDestroy( bundle, rc=localrc )
-      if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
-        line=__LINE__,  &
-        file=__FILE__,  &
-        rcToReturn=rc)) return  ! bail out
     end if
 
     deallocate(itemNameList, itemTypeList, fieldList, stat=stat)
@@ -3117,7 +3122,34 @@ contains
       file=__FILE__,  &
       rcToReturn=rc)) return  ! bail out
 
-  end subroutine nxs_state_write
+  end function nxs_create_bundle_from_state
+
+  !> Write an ESMF state using `ESMF_FieldWrite`.
+  subroutine nxs_bundle_write( bundle, fileName, timeSlice, rc, overwrite )
+    type(ESMF_FieldBundle)         :: bundle
+    character(len=*), intent(in)  :: fileName
+    integer, optional, intent(in)  :: timeSlice
+    integer, optional, intent(out) :: rc
+    logical, optional, intent(in)  :: overwrite
+
+    ! -- local variables
+    integer :: localrc
+    logical :: overwrite_
+
+    ! -- begin
+    if (present(rc)) rc = ESMF_SUCCESS
+
+    overwrite_ = .false.
+    if (present(overwrite)) overwrite_ = overwrite
+
+    call ESMF_FieldBundleWrite( bundle, fileName=fileName, &
+      iofmt=ESMF_IOFMT_NETCDF, timeslice=timeSlice, rc=localrc, overwrite=overwrite_ )
+    if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
+      line=__LINE__, &
+      file=__FILE__,  &
+      rcToReturn=rc)) return ! bail out
+
+  end subroutine nxs_bundle_write
 
   subroutine nxs_state_finalize( state, rc )
     type(ESMF_State)               :: state
