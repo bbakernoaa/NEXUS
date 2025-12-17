@@ -68,8 +68,7 @@ def get_hemco_dates(time_file: Path) -> list[dt.datetime]:
     # Generate the sequence of dates from start to end, inclusive.
     total_seconds = (end - start).total_seconds()
     dates = [
-        start + dt.timedelta(seconds=s)
-        for s in np.arange(0, total_seconds + ts_emis, ts_emis)
+        start + dt.timedelta(seconds=s) for s in np.arange(0, total_seconds + ts_emis, ts_emis)
     ]
     return dates
 
