@@ -9,7 +9,6 @@ dependencies = [
     "dask",
     "netcdf4",
     "numpy",
-    "importlib_resources",
 ]
 
 [project.optional-dependencies]
