@@ -1,0 +1,25 @@
+[project]
+name = "nexus_utils"
+version = "0.1.0"
+description = "Utilities for working with NEXUS data"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "xarray",
+    "dask",
+    "netcdf4",
+    "numpy",
+    "importlib_resources",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "isort",
+    "flake8",
+]
+
+[tool.setuptools]
+packages = ["nexus_utils"]
+package-dir = {"" = "src"}
