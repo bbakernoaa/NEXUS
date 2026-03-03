@@ -884,7 +884,7 @@ contains
     real(r8), pointer, intent(in) :: dataPtr1d(:)
     integer, intent(out) :: rc
     real(r8), pointer :: dstPtr2d(:,:) => null()
-    integer :: n, i, j, rank
+    integer :: n, i, j, rank, nx, ny
     rc = ESMF_SUCCESS
 
     ! Check field rank - we currently only handle 2D gridded fields
@@ -898,121 +898,42 @@ contains
     call ESMF_FieldGet(field, farrayPtr=dstPtr2d, rc=rc)
     if (rc /= ESMF_SUCCESS .or. .not. associated(dstPtr2d)) return
 
+    nx = size(dstPtr2d, 1)
+    ny = size(dstPtr2d, 2)
+
+    if (size(dataPtr1d) < nx*ny) then
+        print *, "PopulateFieldFromPtr ERROR: CDEPS data pointer size (", size(dataPtr1d), &
+                 ") is smaller than field size (", nx, "x", ny, "=", nx*ny, ")"
+        rc = ESMF_FAILURE
+        return
+    endif
+
     n = 0
     do j = lbound(dstPtr2d, 2), ubound(dstPtr2d, 2)
         do i = lbound(dstPtr2d, 1), ubound(dstPtr2d, 1)
             n = n + 1
-            if (n <= size(dataPtr1d)) then
-                dstPtr2d(i,j) = dataPtr1d(n)
-            else
-                dstPtr2d(i,j) = 0.0_r8
-            endif
+            dstPtr2d(i,j) = dataPtr1d(n)
         end do
     end do
   end subroutine PopulateFieldFromPtr
 
   !> @brief Populate HEMCO field directly from CDEPS stream data
-  !> @details Bypasses problematic dshr_fldbun_getFldPtr interface and
-  !>          accesses CDEPS data directly to populate HEMCO import field
-  !> @param[in] stream_index CDEPS stream index
-  !> @param[in] fieldname Name of field to populate
-  !> @param[inout] hemcoField HEMCO import field to populate
-  !> @param[out] rc Return code
   subroutine PopulateHEMCOFromCDEPS(stream_index, fieldname, hemcoField, rc)
     integer, intent(in) :: stream_index
     character(len=*), intent(in) :: fieldname
     type(ESMF_Field), intent(inout) :: hemcoField
     integer, intent(out) :: rc
 
-    ! Local variables
-    real(ESMF_KIND_R8), pointer :: hemcoPtr(:,:)
-    real(ESMF_KIND_R8) :: emission_value
-    integer :: i, j, localPet, localrc, n
-    type(ESMF_VM) :: vm
-    logical :: field_found
-    character(len=16) :: species_name
+    real(r8), pointer :: data_ptr(:) => null()
 
     rc = ESMF_SUCCESS
-    field_found = .false.
 
-    ! Get VM info
-    call ESMF_VMGetCurrent(vm, rc=rc)
-    call ESMF_VMGet(vm, localPet=localPet, rc=rc)
-
-    ! Validate stream index
-    if (stream_index < 1 .or. stream_index > num_cdeps_streams) then
-        if (localPet == 0) print *, "PopulateHEMCOFromCDEPS: Invalid stream index", stream_index
-        rc = ESMF_RC_ARG_OUTOFRANGE
-        return
-    endif
-
-    ! Check if CDEPS data is available
-    if (.not. allocated(sdat)) then
-        if (localPet == 0) print *, "PopulateHEMCOFromCDEPS: CDEPS stream", stream_index, "not available"
-        rc = ESMF_RC_NOT_FOUND
-        return
-    endif
-
-    ! Get HEMCO field pointer
-    call ESMF_FieldGet(hemcoField, farrayPtr=hemcoPtr, rc=rc)
-    if (rc /= ESMF_SUCCESS .or. .not. associated(hemcoPtr)) then
-        if (localPet == 0) print *, "PopulateHEMCOFromCDEPS: Cannot get HEMCO field pointer for ", trim(fieldname)
-        rc = ESMF_RC_PTR_NOTALLOC
-        return
-    endif
-
-    ! CDEPS inline functionality confirmed working - streams initialize and advance successfully
-    ! Since direct field extraction interface varies, use CDEPS-informed realistic emission data
-    if (localPet == 0) print *, "PopulateHEMCOFromCDEPS: CDEPS streams operational for ", trim(fieldname), &
-                                 " - using CDEPS-informed emission data pattern"
-
-    ! If CDEPS stream access failed, populate with realistic emission data
-    if (.not. field_found) then
-        if (localPet == 0) print *, "PopulateHEMCOFromCDEPS: Using CDEPS-informed emission data for ", trim(fieldname)
-
-        ! Determine emission values based on species (informed by CDEPS data)
-        if (index(fieldname, 'BC') > 0) then
-            emission_value = 1.5e-12_ESMF_KIND_R8  ! kg/m2/s
-            species_name = 'BC'
-        elseif (index(fieldname, 'OC') > 0) then
-            emission_value = 2.3e-12_ESMF_KIND_R8
-            species_name = 'OC'
-        elseif (index(fieldname, 'SO2') > 0) then
-            emission_value = 4.1e-11_ESMF_KIND_R8
-            species_name = 'SO2'
-        elseif (index(fieldname, 'NOx') > 0) then
-            emission_value = 8.7e-11_ESMF_KIND_R8
-            species_name = 'NOx'
-        elseif (index(fieldname, 'CO') > 0) then
-            emission_value = 1.2e-10_ESMF_KIND_R8
-            species_name = 'CO'
-        else
-            emission_value = 1.0e-12_ESMF_KIND_R8
-            species_name = 'UNKNOWN'
-        endif
-
-        ! Fill HEMCO field with realistic spatial pattern (representing processed CDEPS data)
-        do j = lbound(hemcoPtr, 2), ubound(hemcoPtr, 2)
-            do i = lbound(hemcoPtr, 1), ubound(hemcoPtr, 1)
-                ! Spatial pattern that simulates what CDEPS would provide
-                hemcoPtr(i,j) = emission_value * (1.0_ESMF_KIND_R8 + &
-                              0.3_ESMF_KIND_R8 * sin(real(i,ESMF_KIND_R8) * 0.1_ESMF_KIND_R8) * &
-                              cos(real(j,ESMF_KIND_R8) * 0.15_ESMF_KIND_R8))
-            end do
-        end do
-
-        field_found = .true.
-        if (localPet == 0) then
-            print *, "PopulateHEMCOFromCDEPS: Populated ", trim(fieldname), " with ", trim(species_name), " emissions"
-            print *, "  Base emission rate: ", emission_value, " kg/m2/s (CDEPS-compatible values)"
-        endif
-    endif
-
-    if (.not. field_found) then
-        if (localPet == 0) print *, "PopulateHEMCOFromCDEPS: Failed to populate ", trim(fieldname)
+    call nexus_cdeps_get_field_ptr(stream_index, fieldname, data_ptr, rc)
+    if (rc == ESMF_SUCCESS .and. associated(data_ptr)) then
+        call PopulateFieldFromPtr(hemcoField, data_ptr, rc)
+    else
         rc = ESMF_RC_NOT_FOUND
     endif
-
   end subroutine PopulateHEMCOFromCDEPS
 
   !> @brief Parse YAML output streams configuration

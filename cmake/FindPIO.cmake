@@ -1,7 +1,7 @@
 # - Try to find PIO
 #
-# This can be controlled by setting PIO_PATH or PIO_<lang>_PATH Cmake variables,
-# where <lang> is the COMPONENT language one needs.
+# This can be controlled by setting PIO_ROOT, PIO_PATH or PIO_<lang>_PATH
+# Cmake variables, where <lang> is the COMPONENT language one needs.
 #
 # Once done, this will define:
 #
@@ -13,6 +13,27 @@
 #
 # Available COMPONENTS are: C Fortran
 # If no components are specified only C is assumed
+
+# Try Config mode first
+if(NOT PIO_FOUND)
+  if(NOT PIO_ROOT AND DEFINED ENV{PIO_ROOT})
+    set(PIO_ROOT $ENV{PIO_ROOT})
+  endif()
+  if(PIO_ROOT)
+    find_package(PIO CONFIG QUIET HINTS ${PIO_ROOT})
+  else()
+    find_package(PIO CONFIG QUIET)
+  endif()
+endif()
+
+if(PIO_FOUND AND TARGET PIO::piof)
+  set(PIO_Fortran_FOUND TRUE)
+  set(PIO_Fortran_LIBRARIES PIO::piof)
+  get_target_property(PIO_Fortran_INCLUDE_DIR PIO::piof INTERFACE_INCLUDE_DIRECTORIES)
+  set(PIO_Fortran_INCLUDE_DIRS ${PIO_Fortran_INCLUDE_DIR})
+  return()
+endif()
+
 include (LibFind)
 include (LibCheck)
 
@@ -46,11 +67,11 @@ foreach (pcomp IN LISTS PIO_FIND_VALID_COMPONENTS)
                               LIBRARIES ${MPI_${pcomp}_LIBRARIES})
             find_package_component(PIO COMPONENT ${pcomp}
                                    PATHS ${PIO_${pcomp}_PATHS} /opt/views/view
-                                   HINTS ${PIO_PATH} ${PIO_${pcomp}_PATH})
+                                   HINTS ${PIO_ROOT} ${PIO_PATH} ${PIO_${pcomp}_PATH})
         else ()
             find_package_component(PIO COMPONENT ${pcomp}
                                    PATHS /opt/views/view
-                                   HINTS ${PIO_PATH} ${PIO_${pcomp}_PATH})
+                                   HINTS ${PIO_ROOT} ${PIO_PATH} ${PIO_${pcomp}_PATH})
         endif ()
 
         # Continue only if component found

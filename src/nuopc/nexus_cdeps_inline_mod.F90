@@ -280,6 +280,8 @@ contains
     call ESMF_TimeGet(currTime, yy=yy, mm=mm, dd=dd, h=h, m=m, s=s, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
     mcdate = yy*10000 + mm*100 + dd
+
+    ! Calculate seconds of day (0-86399)
     tod = h*3600 + m*60 + s
 
     do ns = 1, size(sdat)
