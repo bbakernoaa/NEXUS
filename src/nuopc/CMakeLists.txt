@@ -30,16 +30,22 @@ find_package(NetCDF REQUIRED COMPONENTS Fortran)
 
 # Add PIO support required by CDEPS when inline CDEPS is enabled
 if(NEXUS_USE_INLINE_CDEPS)
-  if (DEFINED ENV{PIO_ROOT})
-    message("PIO_ROOT is $ENV{PIO_ROOT}")
-  else()
+  # Set PIO_PATH if defined via CMake variable or environment
+  if (NOT DEFINED PIO_PATH)
     if (DEFINED PIO)
       set(PIO_PATH ${PIO})
-    else()
+    elseif (DEFINED ENV{PIO_ROOT})
+      set(PIO_PATH $ENV{PIO_ROOT})
+    elseif (DEFINED ENV{parallelio_ROOT})
       set(PIO_PATH $ENV{parallelio_ROOT})
     endif()
-    find_package(PIO REQUIRED COMPONENTS Fortran PATHS ${PIO_PATH} /opt/views/view)
   endif()
+
+  # Add common search paths
+  list(APPEND PIO_SEARCH_PATHS ${PIO_PATH} /opt/views/view)
+
+  # Module mode search using our local FindPIO.cmake
+  find_package(PIO REQUIRED COMPONENTS Fortran HINTS ${PIO_SEARCH_PATHS})
 endif()
 
 if(NetCDF_PARALLEL)
