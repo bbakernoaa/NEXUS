@@ -17,7 +17,8 @@ module nexus_io_mod
   use pio
 
   ! --- CDEPS Imports ---
-  use nexus_cdeps_inline_mod, only: nexus_cdeps_init, nexus_cdeps_run, nexus_cdeps_get_data_pointer, nexus_cdeps_get_available_fields
+  use nexus_cdeps_inline_mod, only: nexus_cdeps_init, nexus_cdeps_run, nexus_cdeps_advance, &
+                                    nexus_cdeps_get_data_pointer, nexus_cdeps_get_available_fields
   use hcoi_nuopc_mod, only: HCO_SetExtDataPointer_2S_NUOPC
   use shr_kind_mod,    only: r8 => shr_kind_r8
 
@@ -51,9 +52,7 @@ module nexus_io_mod
   logical, save :: CDEPS_Initialized = .false.
   type(ESMF_FieldBundle), save :: inputFieldBundle
 
-  ! CDEPS Stream Data - using proper shr_strdata_type like MOM6
-  type(shr_strdata_type), allocatable, save :: sdat(:)
-  integer, save :: num_cdeps_streams = 0
+  ! CDEPS Stream Data
   integer, save :: logunit      ! the logunit on the root task
   character(len=ESMF_MAXSTR), save :: stream_name  ! generic identifier
 
@@ -234,51 +233,10 @@ contains
       !--------------------------------------------------------------------------
       ! 2. Initialize CDEPS for INPUT
       !--------------------------------------------------------------------------
-      ! Check for input config on all processes to avoid uninitialized variable
-      if (localPet == 0) print *, "NEXUS_IO: Attempting to load YAML config: ", trim(CDEPS_CONFIG)
-      ! Check if file exists first
-      inquire(file=CDEPS_CONFIG, exist=file_exists)
-      if (localPet == 0) print *, "NEXUS_IO: YAML file exists? ", file_exists
-      if (.not. file_exists) then
-          if (localPet == 0) print *, "NEXUS_IO: YAML file not found: ", trim(CDEPS_CONFIG)
-          check_input_streams = .false.
-          rc = ESMF_SUCCESS
-      else
-          hconfig = ESMF_HConfigCreate(filename=CDEPS_CONFIG, rc=rc)
-          if (localPet == 0) print *, "NEXUS_IO: HConfig create rc = ", rc
-          if (rc == ESMF_SUCCESS) then
-              if (localPet == 0) print *, "NEXUS_IO: Successfully loaded YAML config file"
-              check_input_streams = .true.
-          else
-              if (localPet == 0) print *, "NEXUS_IO: Failed to load YAML config, rc = ", rc
-              check_input_streams = .false.
-              rc = ESMF_SUCCESS
-          endif
-      endif
-
-      if (check_input_streams) then
-         if (localPet == 0) call ESMF_LogWrite("NEXUS_IO: Initializing CDEPS Inline...", ESMF_LOGMSG_INFO)
-! Initialize CDEPS streams from YAML configuration
-call InitializeCDEPSStreams(hconfig, dstMesh, clock, localPet, rc)
-if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) then
-    CDEPS_Initialized = .false.
-    return
-endif
-
-if (num_cdeps_streams > 0) then
-    CDEPS_Initialized = .true.
-    num_input_streams = num_cdeps_streams  ! Count CDEPS streams as input streams
-    if (localPet == 0) print *, "NEXUS_IO: Successfully initialized ", num_cdeps_streams, " CDEPS streams"
-else
-    if (localPet == 0) call ESMF_LogWrite("NEXUS_IO: No CDEPS streams initialized.", ESMF_LOGMSG_WARNING)
-    CDEPS_Initialized = .false.
-endif
-
-if (localPet == 0) call ESMF_HConfigDestroy(hconfig, rc=rc)
-      else
-         if (localPet == 0) call ESMF_LogWrite("NEXUS_IO: No input streams configuration. CDEPS not initialized.", ESMF_LOGMSG_WARNING)
-         CDEPS_Initialized = .false.
-      endif
+      ! NOTE: CDEPS initialization is now handled in nexus_initialize_mod via
+      ! nexus_cdeps_init_from_hemco. This ensures dynamic configuration.
+      if (localPet == 0) print *, "NEXUS_IO: CDEPS initialization handled externally"
+      CDEPS_Initialized = .true.
 
       if (localPet == 0) print *, "NEXUS_IO: Initialized ", num_hist_streams, " history streams and ", num_input_streams, " input streams."
 
@@ -301,6 +259,7 @@ if (localPet == 0) call ESMF_HConfigDestroy(hconfig, rc=rc)
     integer :: fieldCount
     character(len=256) :: streamName, varName, fieldName
     integer :: colonPos
+    real(r8), pointer :: dataPtr1d_r8(:) => null()
 
     rc = ESMF_SUCCESS
 
@@ -313,25 +272,10 @@ if (localPet == 0) call ESMF_HConfigDestroy(hconfig, rc=rc)
 
     if (localPet == 0) print *, "NEXUS_IO: IO_Read at ", yy, "-", mm, "-", dd, " ", h, ":", m, ":", s
 
-    if (CDEPS_Initialized .and. allocated(sdat) .and. num_cdeps_streams > 0) then
-        ! CDEPS integration using shr_strdata_type arrays
-        if (localPet == 0) print *, "NEXUS_IO: Advancing CDEPS streams (", num_cdeps_streams, " streams)"
-
-        ! Advance all CDEPS streams to current time
-        do i = 1, num_cdeps_streams
-            if (localPet == 0) print *, "NEXUS_IO: Advancing CDEPS stream ", i
-            call shr_strdata_advance(sdat(i), ymd=yy*10000+mm*100+dd, tod=h*3600+m*60+s, logunit=6, istr='NEXUS', rc=localrc)
-            if (localrc == ESMF_SUCCESS) then
-                if (localPet == 0) print *, "NEXUS_IO: Successfully advanced sdat(", i, ") to time ", yy, mm, dd, h, m, s
-                if (localPet == 0) print *, "NEXUS_IO: [OK] CDEPS stream ", i, " contains emission data that needs to be transferred to HEMCO"
-
-                ! CDEPS data is now available in sdat(i) - the existing ExtractCDEPSFieldData
-                ! function already knows how to extract individual fields when requested
-                ! TODO: Implement discovery and extraction of all available emission fields
-            else
-                if (localPet == 0) print *, "NEXUS_IO: ERROR advancing sdat(", i, "), rc=", localrc
-            endif
-        enddo
+    if (CDEPS_Initialized) then
+        ! Advance CDEPS streams using high-level API
+        if (localPet == 0) print *, "NEXUS_IO: Advancing CDEPS streams"
+        call nexus_cdeps_advance(clock, localrc)
 
         ! Transfer data from CDEPS streams to ESMF State
         call ESMF_StateGet(state, itemCount=fieldCount, rc=localrc)
@@ -343,15 +287,14 @@ if (localPet == 0) call ESMF_HConfigDestroy(hconfig, rc=rc)
                 call ESMF_StateGet(state, trim(fieldNames(j)), dstField, rc=localrc)
                 if (localrc == ESMF_SUCCESS) then
                     ! Extract data from CDEPS and populate HEMCO field directly
-                    call PopulateHEMCOFromCDEPS(i, trim(fieldNames(j)), dstField, localrc)
-                    if (localrc == ESMF_SUCCESS) then
-                        if (localPet == 0) print *, "Successfully populated HEMCO field ", trim(fieldNames(j)), " from CDEPS stream ", i
-                    else
-                        if (localPet == 0) print *, "Failed to populate from CDEPS, using fallback for ", trim(fieldNames(j))
-                        call ExtractCDEPSFieldData(i, trim(fieldNames(j)), dstField, localrc)
+                    call nexus_cdeps_get_data_pointer(trim(fieldNames(j)), dataPtr1d_r8, localrc)
+                    if (localrc == ESMF_SUCCESS .and. associated(dataPtr1d_r8)) then
+                        call PopulateFieldFromPtr(dstField, dataPtr1d_r8, localrc)
                         if (localrc == ESMF_SUCCESS) then
-                            if (localPet == 0) print *, "NEXUS_DEBUG: CDEPS data extracted for field: ", trim(fieldNames(j))
+                            if (localPet == 0) print *, "Successfully populated HEMCO field ", trim(fieldNames(j)), " from CDEPS"
                         endif
+                    else
+                        if (localPet == 0) print *, "No CDEPS data for field: ", trim(fieldNames(j))
                     endif
                 endif
             enddo
@@ -935,6 +878,29 @@ if (localPet == 0) call ESMF_HConfigDestroy(hconfig, rc=rc)
     endif
   end subroutine PopulateTestFieldData
 
+  !> @brief Populate Field from 1D pointer
+  subroutine PopulateFieldFromPtr(field, dataPtr1d, rc)
+    type(ESMF_Field), intent(inout) :: field
+    real(r8), pointer, intent(in) :: dataPtr1d(:)
+    integer, intent(out) :: rc
+    real(r8), pointer :: dstPtr2d(:,:) => null()
+    integer :: n, i, j
+    rc = ESMF_SUCCESS
+    call ESMF_FieldGet(field, farrayPtr=dstPtr2d, rc=rc)
+    if (rc /= ESMF_SUCCESS .or. .not. associated(dstPtr2d)) return
+    n = 0
+    do j = lbound(dstPtr2d, 2), ubound(dstPtr2d, 2)
+        do i = lbound(dstPtr2d, 1), ubound(dstPtr2d, 1)
+            n = n + 1
+            if (n <= size(dataPtr1d)) then
+                dstPtr2d(i,j) = dataPtr1d(n)
+            else
+                dstPtr2d(i,j) = 0.0_r8
+            endif
+        end do
+    end do
+  end subroutine PopulateFieldFromPtr
+
   !> @brief Populate HEMCO field directly from CDEPS stream data
   !> @details Bypasses problematic dshr_fldbun_getFldPtr interface and
   !>          accesses CDEPS data directly to populate HEMCO import field
@@ -1104,224 +1070,6 @@ if (localPet == 0) call ESMF_HConfigDestroy(hconfig, rc=rc)
     print *, "ReadYAMLOutputStreams: Created ", num_streams, " default output stream(s)"
   end subroutine ReadYAMLOutputStreams
 
-  !> @brief Initialize CDEPS streams from YAML configuration
-  !> @param hconfig ESMF HConfig object
-  !> @param grid Destination grid
-  !> @param clock ESMF clock
-  !> @param localPet Local processor ID
-  !> @param rc Return code
-  subroutine InitializeCDEPSStreams(hconfig, mesh, clock, localPet, rc)
-    type(ESMF_HConfig), intent(in) :: hconfig
-    type(ESMF_Mesh), intent(in) :: mesh
-    type(ESMF_Clock), intent(in) :: clock
-    integer, intent(in) :: localPet
-    integer, intent(out) :: rc
-
-    ! Local variables
-    integer :: unit_num, ios, i, localrc  ! Added localrc declaration
-    character(len=512) :: line
-    integer :: stream_count
-    character(len=256) :: config_filename
-
-    rc = ESMF_SUCCESS
-    num_cdeps_streams = 0
-
-    if (localPet == 0) print *, "InitializeCDEPSStreams: Starting CDEPS initialization"
-
-    ! Store the mesh in the module variable for use by CDEPS
-    model_mesh = mesh
-    if (localPet == 0) print *, "InitializeCDEPSStreams: Using ESMF_Mesh for CDEPS"
-
-    ! Simple file-based counting since advanced HConfig may not be available
-    config_filename = CDEPS_CONFIG
-    open(newunit=unit_num, file=config_filename, status='old', action='read', iostat=ios)
-    if (ios /= 0) then
-        if (localPet == 0) print *, "InitializeCDEPSStreams: Could not open ", trim(config_filename)
-        return
-    endif
-
-    stream_count = 0
-    do
-        read(unit_num, '(A)', iostat=ios) line
-        if (ios /= 0) exit
-        if (index(line, '- name:') > 0) then
-            stream_count = stream_count + 1
-        endif
-    enddo
-    close(unit_num)
-
-    if (stream_count > 0) then
-        num_cdeps_streams = stream_count
-        allocate(sdat(num_cdeps_streams))
-        if (localPet == 0) print *, "InitializeCDEPSStreams: Found ", num_cdeps_streams, " streams in YAML"
-
-        ! Set model clock and mesh for all streams (following MOM6 pattern)
-        sdat(:)%model_clock = clock
-        ! TODO: Convert Grid to Mesh or adjust CDEPS interface to accept Grid
-        ! sdat(:)%model_mesh = grid  ! Type mismatch: Grid vs Mesh
-
-        ! Initialize each stream for actual data reading following MOM6
-        do i = 1, num_cdeps_streams
-            if (localPet == 0) print *, "InitializeCDEPSStreams: Setting up stream ", i
-
-            ! Set PIO subsystem if available
-            if (associated(pio_subsystem)) then
-                sdat(i)%pio_subsystem => pio_subsystem
-                ! Note: io_type and io_format are set during shr_strdata_init_from_inline
-                if (localPet == 0) print *, "InitializeCDEPSStreams: PIO subsystem assigned to stream ", i
-            endif
-
-            ! Initialize the CDEPS stream with inline configuration
-            ! Following MOM6 mom_inline_mod pattern
-            call InitializeSingleCDEPSStream(i, mesh, clock, localrc)
-            if (localrc /= ESMF_SUCCESS) then
-                if (localPet == 0) print *, "InitializeCDEPSStreams: Failed to initialize stream ", i
-                rc = localrc
-                return
-            endif
-
-            if (localPet == 0) print *, "InitializeCDEPSStreams: Stream ", i, " configured for data reading"
-        enddo
-
-        if (localPet == 0) print *, "InitializeCDEPSStreams: CDEPS streams initialization completed"
-    else
-        if (localPet == 0) print *, "InitializeCDEPSStreams: No input streams found in YAML"
-    endif
-
-    if (localPet == 0) print *, "InitializeCDEPSStreams: Completed initialization of ", num_cdeps_streams, " streams"
-  end subroutine InitializeCDEPSStreams
-
-  !> @brief Initialize a single CDEPS stream following MOM6 pattern
-  !> @param[in] stream_idx Stream index
-  !> @param[in] clock ESMF clock
-  !> @param[out] rc Return code
-  subroutine InitializeSingleCDEPSStream(stream_idx, mesh, clock, rc)
-    integer, intent(in) :: stream_idx
-    type(ESMF_Mesh), intent(in) :: mesh
-    type(ESMF_Clock), intent(in) :: clock
-    integer, intent(out) :: rc
-
-    ! Local variables for MOM6-style CDEPS initialization
-    character(len=ESMF_MAXSTR), allocatable :: filelist(:)
-    character(len=ESMF_MAXSTR), allocatable :: filevars(:,:)
-    character(len=64) :: stream_name
-    character(len=256) :: test_filename
-    integer :: logunit = 6
-    integer :: localPet, localrc
-    type(ESMF_VM) :: vm
-
-    ! Get local PET for debug output
-    call ESMF_VMGetCurrent(vm, rc=localrc)
-    call ESMF_VMGet(vm, localPet=localPet, rc=localrc)
-
-    rc = ESMF_SUCCESS
-
-    ! For now, create a simple test configuration with real CEDS files
-    ! In a real implementation, this would parse the YAML configuration
-    allocate(filelist(1))
-    allocate(filevars(1,2))
-
-! Create realistic emission file paths based on CEDS inventory structure
-    select case (stream_idx)
-    case (1)  ! BC emissions
-        filelist(1) = '/scratch2/NAQFC/Barry.Baker/emissions/CEDS/v2021-06-15/2023/BC-em-anthro_CEDS_global_2023.nc'
-        filevars(1,1) = 'BC_agr'  ! name in file
-        filevars(1,2) = 'BC_agr'  ! name in model
-    case (2)  ! OC emissions
-        filelist(1) = '/scratch2/NAQFC/Barry.Baker/emissions/CEDS/v2021-06-15/2023/OC-em-anthro_CEDS_global_2023.nc'
-        filevars(1,1) = 'OC_agr'
-        filevars(1,2) = 'OC_agr'
-    case (3)  ! SO2 emissions
-        filelist(1) = '/scratch2/NAQFC/Barry.Baker/emissions/CEDS/v2021-06-15/2023/SO2-em-anthro_CEDS_global_2023.nc'
-        filevars(1,1) = 'SO2_agr'
-        filevars(1,2) = 'SO2_agr'
-    case (4)  ! NOx emissions
-        filelist(1) = '/scratch2/NAQFC/Barry.Baker/emissions/CEDS/v2021-06-15/2023/NOx-em-anthro_CEDS_global_2023.nc'
-        filevars(1,1) = 'NOx_agr'
-        filevars(1,2) = 'NOx_agr'
-    case (5)  ! CO emissions
-        filelist(1) = '/scratch2/NAQFC/Barry.Baker/emissions/CEDS/v2021-06-15/2023/CO-em-anthro_CEDS_global_2023.nc'
-        filevars(1,1) = 'CO_agr'
-        filevars(1,2) = 'CO_agr'
-    case default  ! Generic emission file for other streams
-        filelist(1) = '/scratch2/NAQFC/Barry.Baker/emissions/CEDS/v2021-06-15/2023/BC-em-anthro_CEDS_global_2023.nc'
-        filevars(1,1) = 'BC_agr'
-        filevars(1,2) = 'emission'
-    end select
-
-    ! Set stream name
-    write(stream_name,fmt='(a,i2.2)') 'nexus_stream_', stream_idx
-
-    ! Set clock for this stream
-    sdat(stream_idx)%model_clock = clock
-
-    if (localPet == 0) then
-        print *, "InitializeSingleCDEPSStream: Initializing stream ", stream_idx, " with file: ", trim(filelist(1))
-        print *, "InitializeSingleCDEPSStream: Variable mapping: ", trim(filevars(1,1)), " -> ", trim(filevars(1,2))
-    endif
-
-    ! Check if test file exists, create dummy if not (for testing)
-    test_filename = trim(filelist(1))
-    ! Initialize CDEPS stream with working data structures and actual fields
-    ! This creates the pstrm structure with real fields that ExtractCDEPSFieldData can access
-    sdat(stream_idx)%model_clock = clock
-
-    ! Allocate and set up the pstrm structure that contains field data
-    allocate(sdat(stream_idx)%pstrm(1))
-
-    ! Set up field lists for this stream
-    allocate(sdat(stream_idx)%pstrm(1)%fldlist_model(1))
-    sdat(stream_idx)%pstrm(1)%fldlist_model(1) = trim(filevars(1,2))
-    ! Note: fldlist_file not available in this CDEPS version - using model list only
-
-    if (localPet == 0) then
-        print *, "InitializeSingleCDEPSStream: Stream", stream_idx, "storing field name:", trim(sdat(stream_idx)%pstrm(1)%fldlist_model(1))
-        print *, "InitializeSingleCDEPSStream: Field comes from file variable:", trim(filevars(1,1)), "-> target:", trim(filevars(1,2))
-    endif
-
-    ! Use the actual CDEPS initialization routine like MOM6 does
-    write(stream_name,fmt='(a,i2.2)') 'cdeps_stream_', stream_idx
-
-    ! CDEPS will handle mesh creation internally if needed
-    call shr_strdata_init_from_inline(sdat(stream_idx),           &
-           my_task             = localPet,                        &
-           logunit             = 6,                               &
-           compname            = 'NEXUS',                         &
-           model_clock         = clock,                           &
-           model_mesh          = model_mesh,                      &
-           stream_name         = trim(stream_name),               &
-           stream_meshfile     = 'unset',                         &
-           stream_filenames    = filelist,                        &
-           stream_yearFirst    = 2023,                            &
-           stream_yearLast     = 2023,                            &
-           stream_yearAlign    = 2023,                            &
-           stream_fldlistFile  = filevars(:,1),                   &
-           stream_fldListModel = filevars(:,2),                   &
-           stream_lev_dimname  = 'unset',                         &
-           stream_mapalgo      = 'bilinear',                      &
-           stream_offset       = 0,                               &
-           stream_taxmode      = 'cycle',                         &
-           stream_dtlimit      = 1.5_ESMF_KIND_R8,                &
-           stream_tintalgo     = 'linear',                        &
-           stream_src_mask     = 0,                               &
-           stream_dst_mask     = 0,                               &
-           rc                  = localrc)
-
-    if (localrc /= ESMF_SUCCESS) then
-        if (localPet == 0) print *, "InitializeSingleCDEPSStream: shr_strdata_init_from_inline failed for stream ", stream_idx, " rc=", localrc
-        rc = localrc
-    else
-        if (localPet == 0) print *, "InitializeSingleCDEPSStream: Successfully initialized CDEPS stream ", stream_idx
-        if (localPet == 0) then
-            print *, "InitializeSingleCDEPSStream: CEDS file: ", trim(filelist(1))
-            print *, "InitializeSingleCDEPSStream: Variable mapping: ", trim(filevars(1,1)), " -> ", trim(filevars(1,2))
-        endif
-    endif
-
-    deallocate(filelist)
-    deallocate(filevars)
-
-  end subroutine InitializeSingleCDEPSStream
 
   !> @brief Initialize field data registry
   !> @param rc Return code

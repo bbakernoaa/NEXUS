@@ -22,6 +22,7 @@ module nexus_initialize_mod
   use HCO_STATE_MOD, only: HcoState_Init, HCO_GetHcoID
   use HCO_TYPES_MOD, only: HCO_SUCCESS
   use HCOI_NUOPC_MOD, only: HCO_SetServices_NUOPC, HCO_SetExtState_NUOPC
+  use nexus_cdeps_inline_mod, only: nexus_cdeps_init_from_hemco
   use nexus_grid_mod, only: nxs_create_hco_grid, nxs_create_hco_grid_static, nxs_set_hco_grid, nxs_set_hco_mesh
   use nexus_config_mod, only: nxs_read_time_config
   use nexus_state_mod, only: nxs_diag_state_init_disabled, nxs_create_hemco_diagnostics
@@ -563,7 +564,17 @@ contains
        return
     endif
 
-    ! Initialize IO (History + Inline CDEPS) now that mesh and clock are available
+    ! Initialize CDEPS streams directly from HEMCO configuration
+    if ( localPet == 0 ) then
+       call ESMF_LogWrite("Phase 4: Initializing CDEPS streams from HEMCO...", ESMF_LOGMSG_INFO)
+    endif
+    call nexus_cdeps_init_from_hemco(HcoState, model, clock, mesh, rc)
+    if ( rc /= ESMF_SUCCESS ) then
+       call ESMF_LogWrite("NEXUS: Error initializing CDEPS streams from HEMCO", ESMF_LOGMSG_ERROR)
+       return
+    endif
+
+    ! Initialize IO (History) now that mesh and clock are available
     call IO_Init(mesh, clock, rc)
     if ( rc /= ESMF_SUCCESS ) then
        call ESMF_LogWrite("NEXUS: Warning - IO_Init failed; falling back to test data in IO_Read", ESMF_LOGMSG_WARNING)
