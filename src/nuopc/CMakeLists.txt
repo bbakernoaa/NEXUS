@@ -38,7 +38,7 @@ if(NEXUS_USE_INLINE_CDEPS)
     else()
       set(PIO_PATH $ENV{parallelio_ROOT})
     endif()
-    find_package(PIO REQUIRED COMPONENT C Fortran PATH ${PIO_PATH})
+    find_package(PIO REQUIRED COMPONENTS Fortran PATH ${PIO_PATH})
   endif()
 endif()
 
@@ -79,7 +79,7 @@ if(NEXUS_USE_INLINE_CDEPS)
   endif()
   # ESMF must come after CDEPS in link order
   target_link_libraries(NEXUS_Shared PUBLIC esmf)
-  target_link_libraries(NEXUS_Shared PUBLIC ${PIO_C_LIBRARIES} ${PIO_Fortran_LIBRARIES})
+  target_link_libraries(NEXUS_Shared PUBLIC ${PIO_Fortran_LIBRARIES})
 endif()
 
 target_link_libraries(nexus

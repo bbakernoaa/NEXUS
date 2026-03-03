@@ -17,13 +17,13 @@ include (LibFind)
 include (LibCheck)
 
 # Define PIO C Component
-define_package_component(PIO DEFAULT
+define_package_component(PIO
                          COMPONENT C
                          INCLUDE_NAMES pio.h
                          LIBRARY_NAMES pio)
 
 # Define PIO Fortran Component
-define_package_component(PIO
+define_package_component(PIO DEFAULT
                          COMPONENT Fortran
                          INCLUDE_NAMES pio.mod pio.inc
                          LIBRARY_NAMES piof)
