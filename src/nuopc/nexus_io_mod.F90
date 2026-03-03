@@ -17,7 +17,7 @@ module nexus_io_mod
   use pio
 
   ! --- CDEPS Imports ---
-  use nexus_cdeps_inline_mod, only: nexus_cdeps_init, nexus_cdeps_run, nexus_cdeps_advance, &
+  use nexus_cdeps_inline_mod, only: nexus_cdeps_advance, &
                                     nexus_cdeps_get_data_pointer, nexus_cdeps_get_available_fields
   use hcoi_nuopc_mod, only: HCO_SetExtDataPointer_2S_NUOPC
   use shr_kind_mod,    only: r8 => shr_kind_r8
