@@ -183,4 +183,3 @@ end function rectangle_area
 - Use CI/CD to run tests and check documentation on every PR.
 - Automate formatting and linting if possible (e.g., with `fprettify`, `fortran-linter`).
 - Require all tests to pass before merging.
-
