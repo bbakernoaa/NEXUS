@@ -269,7 +269,7 @@ contains
     integer,          intent(out) :: rc
 
     type(ESMF_Time) :: currTime
-    integer :: yy, mm, dd, ss, mcdate, ns
+    integer :: yy, mm, dd, h, m, s, mcdate, tod, ns
     character(len=ESMF_MAXSTR) :: stream_name
 
     rc = ESMF_SUCCESS
@@ -277,13 +277,14 @@ contains
 
     call ESMF_ClockGet(clock, currTime=currTime, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
-    call ESMF_TimeGet(currTime, yy=yy, mm=mm, dd=dd, s=ss, rc=rc)
+    call ESMF_TimeGet(currTime, yy=yy, mm=mm, dd=dd, h=h, m=m, s=s, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
     mcdate = yy*10000 + mm*100 + dd
+    tod = h*3600 + m*60 + s
 
     do ns = 1, size(sdat)
       write(stream_name,fmt='(a,i2.2)') 'stream_', ns
-      call shr_strdata_advance(sdat(ns), ymd=mcdate, tod=ss, logunit=logunit, istr=trim(stream_name), rc=rc)
+      call shr_strdata_advance(sdat(ns), ymd=mcdate, tod=tod, logunit=logunit, istr=trim(stream_name), rc=rc)
       if (chkerr(rc,__LINE__,u_FILE_u)) return
     end do
   end subroutine nexus_cdeps_advance
