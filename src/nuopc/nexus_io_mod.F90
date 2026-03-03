@@ -884,10 +884,20 @@ contains
     real(r8), pointer, intent(in) :: dataPtr1d(:)
     integer, intent(out) :: rc
     real(r8), pointer :: dstPtr2d(:,:) => null()
-    integer :: n, i, j
+    integer :: n, i, j, rank
     rc = ESMF_SUCCESS
+
+    ! Check field rank - we currently only handle 2D gridded fields
+    call ESMF_FieldGet(field, rank=rank, rc=rc)
+    if (rc /= ESMF_SUCCESS .or. rank /= 2) then
+        ! Skip non-2D fields (e.g. 3D fields or scalar placeholders)
+        rc = ESMF_SUCCESS
+        return
+    endif
+
     call ESMF_FieldGet(field, farrayPtr=dstPtr2d, rc=rc)
     if (rc /= ESMF_SUCCESS .or. .not. associated(dstPtr2d)) return
+
     n = 0
     do j = lbound(dstPtr2d, 2), ubound(dstPtr2d, 2)
         do i = lbound(dstPtr2d, 1), ubound(dstPtr2d, 1)

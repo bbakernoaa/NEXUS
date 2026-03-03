@@ -38,7 +38,7 @@ if(NEXUS_USE_INLINE_CDEPS)
     else()
       set(PIO_PATH $ENV{parallelio_ROOT})
     endif()
-    find_package(PIO REQUIRED COMPONENTS Fortran PATH ${PIO_PATH})
+    find_package(PIO REQUIRED COMPONENTS Fortran PATHS ${PIO_PATH})
   endif()
 endif()
 

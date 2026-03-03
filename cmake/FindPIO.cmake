@@ -20,13 +20,13 @@ include (LibCheck)
 define_package_component(PIO
                          COMPONENT C
                          INCLUDE_NAMES pio.h
-                         LIBRARY_NAMES pio)
+                         LIBRARY_NAMES pio pioc)
 
 # Define PIO Fortran Component
 define_package_component(PIO DEFAULT
                          COMPONENT Fortran
                          INCLUDE_NAMES pio.mod pio.inc
-                         LIBRARY_NAMES piof)
+                         LIBRARY_NAMES piof piofortran pio)
 
 # Search for list of valid components requested
 find_valid_components(PIO)
@@ -45,9 +45,10 @@ foreach (pcomp IN LISTS PIO_FIND_VALID_COMPONENTS)
                               INCLUDE_DIRECTORIES ${MPI_${pcomp}_INCLUDE_PATH}
                               LIBRARIES ${MPI_${pcomp}_LIBRARIES})
             find_package_component(PIO COMPONENT ${pcomp}
-                                   PATHS ${PIO_${pcomp}_PATHS})
+                                   PATHS ${PIO_${pcomp}_PATHS}
+                                   HINTS ${PIO_PATH} ${PIO_${pcomp}_PATH})
         else ()
-            find_package_component(PIO COMPONENT ${pcomp} HINT PIO_${pcomp}_PATH=${PIO_PATH})
+            find_package_component(PIO COMPONENT ${pcomp} HINTS ${PIO_PATH} ${PIO_${pcomp}_PATH})
         endif ()
 
         # Continue only if component found
