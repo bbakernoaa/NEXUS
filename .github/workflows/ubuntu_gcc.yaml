@@ -17,15 +17,15 @@ jobs:
         with:
             submodules: recursive
 
-      - name: install build tools
-        run: |
-          apt-get update
-          apt-get install -y cmake make
-
       - name: build
         run: |
-          export CC=mpicc
-          export FC=mpif90
+          if [ -f /opt/spack-environment/activate.sh ]; then
+            source /opt/spack-environment/activate.sh
+          fi
+          # Fallback to install cmake if still not found
+          if ! command -v cmake &> /dev/null; then
+            apt-get update && apt-get install -y cmake make
+          fi
           mkdir -p build && cd build
           cmake -DCMAKE_INSTALL_PREFIX=../install ..
           make -j2 VERBOSE=1
