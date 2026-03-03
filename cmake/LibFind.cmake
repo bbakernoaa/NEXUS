@@ -219,6 +219,12 @@ function (find_package_component PKG)
         if (DEFINED ENV{${PKGUP}})
             list (APPEND SEARCH_DIRS $ENV{${PKGUP}})
         endif ()
+        if (DEFINED ENV{${PKG}_ROOT})
+            list (APPEND SEARCH_DIRS $ENV{${PKG}_ROOT})
+        endif ()
+        if (DEFINED ENV{${PKGUP}_ROOT})
+            list (APPEND SEARCH_DIRS $ENV{${PKGUP}_ROOT})
+        endif ()
         if (CMAKE_PREFIX_PATH)
             list (APPEND SEARCH_DIRS ${CMAKE_PREFIX_PATH})
         endif ()
@@ -242,14 +248,12 @@ function (find_package_component PKG)
         find_path(${PKGCOMP}_INCLUDE_DIR
                   NAMES ${${PKGCOMP}_INCLUDE_NAMES}
                   HINTS ${SEARCH_DIRS}
-                  PATH_SUFFIXES include
-                  NO_DEFAULT_PATH)
+                  PATH_SUFFIXES include)
 
         find_library(${PKGCOMP}_LIBRARY
                      NAMES ${${PKGCOMP}_LIBRARY_NAMES}
                      HINTS ${SEARCH_DIRS}
-                     PATH_SUFFIXES lib lib64
-                     NO_DEFAULT_PATH)
+                     PATH_SUFFIXES lib lib64)
 
         # If found, check if library is static or dynamic
         if (${PKGCOMP}_LIBRARY)
