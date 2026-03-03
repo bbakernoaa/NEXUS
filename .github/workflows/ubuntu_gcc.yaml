@@ -9,7 +9,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-24.04
     container:
-      image: jcsda/docker-gnu-openmpi-dev:skylab-v8
+      image: jcsda/docker-gnu-openmpi-dev:1.9
 
     steps:
       - name: checkout
@@ -22,6 +22,11 @@ jobs:
           if [ -f /opt/spack-environment/activate.sh ]; then
             source /opt/spack-environment/activate.sh
           fi
+
+          if command -v spack &> /dev/null; then
+            spack load esmf parallelio netcdf-fortran || true
+          fi
+
           # Fallback to install cmake if still not found
           if ! command -v cmake &> /dev/null; then
             apt-get update && apt-get install -y cmake make
@@ -33,6 +38,14 @@ jobs:
 
       - name: test
         run: |
+          if [ -f /opt/spack-environment/activate.sh ]; then
+            source /opt/spack-environment/activate.sh
+          fi
+
+          if command -v spack &> /dev/null; then
+            spack load esmf parallelio netcdf-fortran || true
+          fi
+
           set -x
           bin="$PWD/build/bin/nexus"
           failed=0
