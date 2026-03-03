@@ -184,4 +184,3 @@ end function rectangle_area
 - Automate formatting and linting if possible (e.g., with `fprettify`, `fortran-linter`).
 - Require all tests to pass before merging.
 
-
