@@ -1,6 +1,6 @@
 # - Try to find PIO
 #
-# This can be controled by setting PIO_PATH or PIO_<lang>_PATH Cmake variables,
+# This can be controlled by setting PIO_PATH or PIO_<lang>_PATH Cmake variables,
 # where <lang> is the COMPONENT language one needs.
 #
 # Once done, this will define:

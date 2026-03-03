@@ -8,7 +8,7 @@ module nexus_driver
 
   use nexus_cap, only: modelSS => SetServices
   use nexus_config_mod, only: nxs_read_full_config
-  
+
   ! CDEPS data atmosphere component
   use cdeps_datm_comp, only: datm_SS => SetServices
 
@@ -87,14 +87,14 @@ contains
     rc = ESMF_SUCCESS
 
     call ESMF_LogWrite("NEXUS_DRIVER: Starting SetModelServices", ESMF_LOGMSG_INFO)
-    
+
     ! Read standalone mode from nexus.rc configuration
     call nxs_read_full_config('nexus.rc', hemco_config_file, grid_file, standalone_mode, regrid_file, config_rc)
     if (config_rc /= 0) then
       call ESMF_LogWrite('NEXUS_DRIVER: Warning - could not read config, defaulting to standalone mode', ESMF_LOGMSG_WARNING)
       standalone_mode = .true.
     end if
-    
+
     if (standalone_mode) then
       call ESMF_LogWrite('NEXUS_DRIVER: Standalone mode enabled (skipping external DATM + connector)', ESMF_LOGMSG_INFO)
     else

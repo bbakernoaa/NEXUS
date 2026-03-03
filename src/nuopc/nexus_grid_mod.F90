@@ -203,7 +203,7 @@ contains
        rc = localrc
        return
     endif
-    
+
     NX = ub(1) - lb(1) + 1
     NY = ub(2) - lb(2) + 1
 
@@ -223,7 +223,7 @@ contains
 
     ! Set basic grid properties in HEMCO state
     ! Following MAPL/GEOS pattern - allocate HEMCO grid arrays
-    
+
     ! Allocate HEMCO grid coordinate arrays using HCO_ArrAssert
     call HCO_ArrAssert( HcoState%Grid%XMID, HcoState%NX, HcoState%NY, rc )
     if ( rc /= HCO_SUCCESS ) then
@@ -237,7 +237,7 @@ contains
        return
     endif
 
-    ! Populate HEMCO coordinate arrays from ESMF grid 
+    ! Populate HEMCO coordinate arrays from ESMF grid
     ! Our coordinates are already in degrees (no conversion needed)
     do j = 1, NY
        do i = 1, NX
@@ -399,7 +399,7 @@ contains
 
     ! For now, create a simple 2x2 grid structure from mesh
     ! In a full implementation, this would properly extract grid dimensions from mesh structure
-    NX = 2  
+    NX = 2
     NY = 2
 
     ! Set grid dimensions in HcoState
@@ -511,7 +511,7 @@ contains
     ! Simple 3x3 node grid (creates 2x2 elements)
     ! Node layout:
     ! 7 8 9
-    ! 4 5 6  
+    ! 4 5 6
     ! 1 2 3
 
     ! Set up node IDs (1-based)
@@ -521,7 +521,7 @@ contains
 
     ! Set up node coordinates (simple unit square)
     nodeCoords(1:2) = [0.0_ESMF_KIND_R8, 0.0_ESMF_KIND_R8]  ! node 1
-    nodeCoords(3:4) = [1.0_ESMF_KIND_R8, 0.0_ESMF_KIND_R8]  ! node 2  
+    nodeCoords(3:4) = [1.0_ESMF_KIND_R8, 0.0_ESMF_KIND_R8]  ! node 2
     nodeCoords(5:6) = [2.0_ESMF_KIND_R8, 0.0_ESMF_KIND_R8]  ! node 3
     nodeCoords(7:8) = [0.0_ESMF_KIND_R8, 1.0_ESMF_KIND_R8]  ! node 4
     nodeCoords(9:10) = [1.0_ESMF_KIND_R8, 1.0_ESMF_KIND_R8] ! node 5
@@ -662,15 +662,15 @@ contains
     do while ( .true. )
        read(iunit, '(A)', iostat=ios) line
        if ( ios /= 0 ) exit
-       
+
        ! Skip empty lines and comments
        if ( len_trim(line) == 0 .or. line(1:1) == '#' ) cycle
-       
+
        ! Parse keyword: value pairs
        if ( index(line, ':') > 0 ) then
           keyword = trim(adjustl(line(1:index(line, ':')-1)))
           value = trim(adjustl(line(index(line, ':')+1:)))
-          
+
           select case(trim(keyword))
           case('XMIN')
              read(value, *, iostat=ios) xmin
@@ -689,7 +689,7 @@ contains
           end select
        endif
     end do
-    
+
     close(iunit)
 
     ! Create ESMF grid with read parameters
@@ -831,7 +831,7 @@ contains
   !> @brief Create ESMF grid from mosaic file
   !> @details Supports GFDL-style mosaic files for high-resolution and cubed-sphere grids
   !> @param[in] mosaicFile Mosaic file path (.txt or contains 'mosaic' in name)
-  !> @param[out] grid ESMF grid object 
+  !> @param[out] grid ESMF grid object
   !> @param[out] rc Return code
   subroutine nxs_create_grid_from_mosaic(mosaicFile, grid, rc)
 

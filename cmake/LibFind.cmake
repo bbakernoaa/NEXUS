@@ -129,7 +129,7 @@ endfunction ()
 #   INCLUDE_DIRECTORIES
 #   LIBRARIES
 #
-# Ouput:
+# Output:
 #   ${PATHLIST}
 #
 function (initialize_paths PATHLIST)
@@ -236,7 +236,7 @@ function (find_package_component PKG)
 
         foreach (dir IN LISTS SEARCH_DIRS)
 
-            # Search for include file names in current dirrectory
+            # Search for include file names in current directory
             foreach (iname IN LISTS ${PKGCOMP}_INCLUDE_NAMES)
                 if (EXISTS ${dir}/${iname})
                     set (${PKGCOMP}_PREFIX ${dir})
