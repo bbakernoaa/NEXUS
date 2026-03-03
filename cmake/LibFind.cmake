@@ -248,11 +248,13 @@ function (find_package_component PKG)
         find_path(${PKGCOMP}_INCLUDE_DIR
                   NAMES ${${PKGCOMP}_INCLUDE_NAMES}
                   HINTS ${SEARCH_DIRS}
+                  PATHS ${SEARCH_DIRS}
                   PATH_SUFFIXES include)
 
         find_library(${PKGCOMP}_LIBRARY
                      NAMES ${${PKGCOMP}_LIBRARY_NAMES}
                      HINTS ${SEARCH_DIRS}
+                     PATHS ${SEARCH_DIRS}
                      PATH_SUFFIXES lib lib64)
 
         # If found, check if library is static or dynamic

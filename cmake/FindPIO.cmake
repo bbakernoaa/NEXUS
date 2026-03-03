@@ -45,10 +45,12 @@ foreach (pcomp IN LISTS PIO_FIND_VALID_COMPONENTS)
                               INCLUDE_DIRECTORIES ${MPI_${pcomp}_INCLUDE_PATH}
                               LIBRARIES ${MPI_${pcomp}_LIBRARIES})
             find_package_component(PIO COMPONENT ${pcomp}
-                                   PATHS ${PIO_${pcomp}_PATHS}
+                                   PATHS ${PIO_${pcomp}_PATHS} /opt/views/view
                                    HINTS ${PIO_PATH} ${PIO_${pcomp}_PATH})
         else ()
-            find_package_component(PIO COMPONENT ${pcomp} HINTS ${PIO_PATH} ${PIO_${pcomp}_PATH})
+            find_package_component(PIO COMPONENT ${pcomp}
+                                   PATHS /opt/views/view
+                                   HINTS ${PIO_PATH} ${PIO_${pcomp}_PATH})
         endif ()
 
         # Continue only if component found
