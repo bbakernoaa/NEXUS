@@ -20,7 +20,7 @@ include (LibCheck)
 define_package_component(PIO DEFAULT
                          COMPONENT C
                          INCLUDE_NAMES pio.h
-                         LIBRARY_NAMES pioc)
+                         LIBRARY_NAMES pio)
 
 # Define PIO Fortran Component
 define_package_component(PIO
