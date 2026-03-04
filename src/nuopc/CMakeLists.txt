@@ -45,6 +45,7 @@ if(NEXUS_USE_INLINE_CDEPS)
   list(APPEND PIO_SEARCH_PATHS ${PIO_PATH} /opt/views/view)
 
   # Module mode search using our local FindPIO.cmake
+  # Do NOT use PATHS here as it might trigger Config mode discovery prematurely
   find_package(PIO REQUIRED COMPONENTS Fortran HINTS ${PIO_SEARCH_PATHS})
 endif()
 

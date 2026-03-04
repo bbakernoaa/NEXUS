@@ -164,9 +164,9 @@ contains
     integer,             intent(out) :: rc
 
     type(ListCont), pointer :: Lct
-    integer :: unit, ios, localPet
+    integer :: unit, ios, localPet, stream_count
     type(ESMF_VM) :: vm
-    character(len=255) :: stream_file = "cdeps_streams_from_hemco.yaml"
+    character(len=255) :: stream_file = "cdeps_streams_from_hemco.config"
     character(len=1024) :: ncFile, ncPara
 
     rc = ESMF_SUCCESS
@@ -179,7 +179,7 @@ contains
     call ESMF_VMGet(vm, localPet=localPet, rc=rc)
 
     if (localPet == 0) then
-        print *, "nexus_cdeps_init_from_hemco: Bridging HEMCO to CDEPS"
+        print *, "nexus_cdeps_init_from_hemco: Bridging HEMCO to CDEPS (ESMF Config format)"
 
         ! 1. Open a temporary file to write CDEPS configuration
         open(newunit=unit, file=trim(stream_file), status='replace', action='write', iostat=ios)
@@ -188,28 +188,45 @@ contains
             return
         endif
 
-        write(unit, '(A)') "input_streams:"
+        ! First pass: count streams
+        stream_count = 0
+        Lct => HcoState%Config%ConfigList
+        do while (associated(Lct))
+            if (associated(Lct%Dct)) then
+                ncFile = Lct%Dct%Dta%ncFile
+                ncPara = Lct%Dct%Dta%ncPara
+                if (Lct%Dct%DctType == HCO_DCTTYPE_BASE .and. Lct%Dct%Dta%ncRead .and. &
+                    trim(ncFile) /= '-' .and. trim(ncFile) /= '0.0' .and. trim(ncPara) /= '-') then
+                    stream_count = stream_count + 1
+                endif
+            endif
+            Lct => Lct%NextCont
+        enddo
+
+        write(unit, '(A,I0)') "streams_count: ", stream_count
+        write(unit, '(A)')    "streams::"
 
         ! 2. Iterate through HEMCO ConfigList
         Lct => HcoState%Config%ConfigList
         do while (associated(Lct))
             if (associated(Lct%Dct)) then
                 ! We only care about base emissions that are read from files
-                ! Filter out non-file based entries (e.g. '-' or single values)
                 ncFile = Lct%Dct%Dta%ncFile
                 ncPara = Lct%Dct%Dta%ncPara
 
                 if (Lct%Dct%DctType == HCO_DCTTYPE_BASE .and. Lct%Dct%Dta%ncRead .and. &
                     trim(ncFile) /= '-' .and. trim(ncFile) /= '0.0' .and. trim(ncPara) /= '-') then
 
-                    ! Basic stream info
-                    write(unit, '(A,A)') "  - name: ", trim(Lct%Dct%cName)
+                    ! Stream ID block
+                    write(unit, '(A,A,A)') "  stream_", trim(Lct%Dct%cName), "::"
 
                     ! Handle $ROOT token in filename if not already resolved by HEMCO
-                    ! (HEMCO usually resolves tokens during Config_ReadFile)
-                    write(unit, '(A,A)') "    datafiles: ", trim(ncFile)
-                    write(unit, '(A)')    "    datavars:"
-                    write(unit, '(A,A)') "      - ", trim(ncPara)
+                    write(unit, '(A,A)') "    data_filenames: ", trim(ncFile)
+                    write(unit, '(A,I0)') "    year_first: ", Lct%Dct%Dta%ncYrs(1)
+                    write(unit, '(A,I0)') "    year_last: ",  Lct%Dct%Dta%ncYrs(2)
+                    write(unit, '(A,I0)') "    year_align: ", Lct%Dct%Dta%ncYrs(1)
+                    write(unit, '(A)')    "    offset: 0"
+                    write(unit, '(A)')    "    dtlimit: 1.5"
 
                     ! Taxmode
                     select case(Lct%Dct%Dta%CycleFlag)
@@ -221,27 +238,26 @@ contains
                         write(unit, '(A)') "    taxmode: cycle"
                     end select
 
-                    ! Time range
-                    write(unit, '(A,I0)') "    year_first: ", Lct%Dct%Dta%ncYrs(1)
-                    write(unit, '(A,I0)') "    year_last: ",  Lct%Dct%Dta%ncYrs(2)
-                    write(unit, '(A,I0)') "    year_align: ", Lct%Dct%Dta%ncYrs(1)
-
-                    ! Interpolation and mapping
-                    ! Use reasonable defaults for NEXUS
                     write(unit, '(A)') "    mapalgo: bilinear"
-                    write(unit, '(A)') "    tintalgo: linear"
+                    write(unit, '(A)') "    tInterpAlgo: linear"
 
                     ! Handle vertical dimension
                     if (Lct%Dct%Dta%SpaceDim == 3) then
-                        ! If levels are specified, we might need lev_dimname
-                        ! For now assume 'lev' or 'level' or handled by netCDF-PIO
                         write(unit, '(A)') "    lev_dimname: lev"
                     else
                         write(unit, '(A)') "    lev_dimname: none"
                     endif
 
-                    ! Meshfile
+                    write(unit, '(A)') "    src_mask_val: 0"
+                    write(unit, '(A)') "    dst_mask_val: 0"
                     write(unit, '(A)') "    meshfile: none"
+
+                    ! Variable list
+                    write(unit, '(A)') "    variables::"
+                    write(unit, '(A,A)') "      ", trim(ncPara)
+                    write(unit, '(A)') "    ::"
+
+                    write(unit, '(A)') "  ::"
 
                     if (localPet == 0) then
                         print *, "  + Bridged stream: ", trim(Lct%Dct%cName), " (", trim(ncPara), ")"
@@ -250,6 +266,7 @@ contains
             endif
             Lct => Lct%NextCont
         enddo
+        write(unit, '(A)') "::"
         close(unit)
     endif
 
