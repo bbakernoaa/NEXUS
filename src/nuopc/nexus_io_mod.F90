@@ -650,102 +650,57 @@ contains
 
   end subroutine ExtractAllEmissionFieldsFromCDEPS
 
-  !> @brief Creates and populates STREAM:VARIABLE format import fields from CDEPS data
-  !! @details This function extracts emission fields from CDEPS streams and creates
-  !! corresponding ESMF fields in the importState using STREAM:VARIABLE naming format
-  !! @param[inout] importState ESMF state to add fields to
-  !! @param[in] grid ESMF grid for field creation
-  !! @param[in] localPet Local processor ID
-  !! @param[out] rc Return code
+  !> @brief Dynamically creates and populates STREAM:VARIABLE format import fields from HEMCO config
   subroutine CreateAndPopulateStreamVariableFields(importState, grid, localPet, rc)
+    use HCO_STATE_MOD,     only: HCO_State
+    use HCO_TYPES_MOD
+    use HCO_DATACONT_MOD,  only: ListCont_NextCont
+    use nexus_initialize_mod, only: ModuleHcoState
+
     type(ESMF_State), intent(inout) :: importState
     type(ESMF_Grid), intent(in) :: grid
     integer, intent(in) :: localPet
     integer, intent(out) :: rc
 
-    integer :: localrc, stream_index, field_index, i
-    character(len=255) :: fieldName, streamName, varName
-    type(ESMF_Field) :: newField
-    real(kind=4), pointer :: fieldData(:,:)
-    integer :: nx, ny, created_count
-    logical :: field_found
-
-    ! List of known emission streams and their variables
-    character(len=*), parameter :: EMISSION_STREAMS(10) = [ &
-      'CEDS_BC      ', 'CEDS_OC      ', 'CEDS_SO2     ', 'CEDS_SCALING ', &
-      'FIRE_HOURLY  ', 'FIRE_DAILY   ', 'FIRE_WEEKLY  ', 'CAMS_HOURLY  ', &
-      'CAMS_DAILY   ', 'EDGAR_TOD    ' ]
-
-    character(len=*), parameter :: BC_VARS(8) = [ &
-      'BC_agr', 'BC_ene', 'BC_ind', 'BC_rco', 'BC_tra', 'BC_shp', 'BC_sol', 'BC_was' ]
-
-    character(len=*), parameter :: OC_VARS(8) = [ &
-      'OC_agr', 'OC_ene', 'OC_ind', 'OC_rco', 'OC_tra', 'OC_shp', 'OC_sol', 'OC_was' ]
-
-    character(len=*), parameter :: SO2_VARS(8) = [ &
-      'SO2_agr', 'SO2_ene', 'SO2_ind', 'SO2_rco', 'SO2_tra', 'SO2_shp', 'SO2_sol', 'SO2_was' ]
+    type(ListCont), pointer :: Lct
+    integer :: localrc, created_count
+    character(len=256) :: fieldName
+    logical :: isPresent
 
     rc = ESMF_SUCCESS
     created_count = 0
 
-    if (localPet == 0) print *, "CreateAndPopulateStreamVariableFields: Starting emission field creation"
+    if (localPet == 0) print *, "CreateAndPopulateStreamVariableFields: Starting dynamic emission field creation"
 
-    ! Debug: List available fields in each stream
-    do i = 1, num_cdeps_streams
-      call DebugListCDEPSFields(i, localPet)
-    enddo
+    if (associated(ModuleHcoState) .and. associated(ModuleHcoState%Config)) then
+        Lct => ModuleHcoState%Config%ConfigList
+        do while (associated(Lct))
+            if (associated(Lct%Dct)) then
+                ! We only care about base emissions that are read from files
+                if (Lct%Dct%DctType == HCO_DCTTYPE_BASE .and. Lct%Dct%Dta%ncRead .and. &
+                    trim(Lct%Dct%Dta%ncFile) /= '-' .and. trim(Lct%Dct%Dta%ncPara) /= '-') then
 
-    ! Create BC emission fields (CEDS_BC:BC_*)
-    do i = 1, 8
-      fieldName = 'CEDS_BC:' // trim(BC_VARS(i))
-      call CreateAndPopulateStreamField(importState, grid, fieldName, 'CEDS_BC', trim(BC_VARS(i)), localPet, localrc)
-      if (localrc == ESMF_SUCCESS) then
-        created_count = created_count + 1
-        if (localPet == 0) print *, "  [OK] Created import field: ", trim(fieldName)
-      else
-        if (localPet == 0) print *, "  [ERR] Failed to create import field: ", trim(fieldName)
-      endif
-    enddo
+                    fieldName = trim(Lct%Dct%cName) // ':' // trim(Lct%Dct%Dta%ncPara)
 
-    ! Create OC emission fields (CEDS_OC:OC_*)
-    do i = 1, 8
-      fieldName = 'CEDS_OC:' // trim(OC_VARS(i))
-      call CreateAndPopulateStreamField(importState, grid, fieldName, 'CEDS_OC', trim(OC_VARS(i)), localPet, localrc)
-      if (localrc == ESMF_SUCCESS) then
-        created_count = created_count + 1
-        if (localPet == 0) print *, "  [OK] Created import field: ", trim(fieldName)
-      else
-        if (localPet == 0) print *, "  [ERR] Failed to create import field: ", trim(fieldName)
-      endif
-    enddo
-
-    ! Create SO2 emission fields (CEDS_SO2:SO2_*)
-    do i = 1, 8
-      fieldName = 'CEDS_SO2:' // trim(SO2_VARS(i))
-      call CreateAndPopulateStreamField(importState, grid, fieldName, 'CEDS_SO2', trim(SO2_VARS(i)), localPet, localrc)
-      if (localrc == ESMF_SUCCESS) then
-        created_count = created_count + 1
-        if (localPet == 0) print *, "  [OK] Created import field: ", trim(fieldName)
-      else
-        if (localPet == 0) print *, "  [ERR] Failed to create import field: ", trim(fieldName)
-      endif
-    enddo
-
-    ! Create scaling factor fields
-    fieldName = 'CEDS_SCALING:NOXscale'
-    call CreateAndPopulateStreamField(importState, grid, fieldName, 'CEDS_SCALING', 'NOXscale', localPet, localrc)
-    if (localrc == ESMF_SUCCESS) then
-      created_count = created_count + 1
-      if (localPet == 0) print *, "  [OK] Created import field: ", trim(fieldName)
-    else
-      if (localPet == 0) print *, "  [ERR] Failed to create import field: ", trim(fieldName)
+                    ! Check if field already exists in importState
+                    call ESMF_StateGet(importState, trim(fieldName), isPresent=isPresent, rc=localrc)
+                    if (.not. isPresent) then
+                        call CreateAndPopulateStreamField(importState, grid, fieldName, &
+                                                          trim(Lct%Dct%cName), &
+                                                          trim(Lct%Dct%Dta%ncPara), &
+                                                          localPet, localrc)
+                        if (localrc == ESMF_SUCCESS) then
+                            created_count = created_count + 1
+                        endif
+                    endif
+                endif
+            endif
+            Lct => Lct%NextCont
+        enddo
     endif
 
-    ! Add more emission fields as needed (fire, CAMS, etc.)
-    ! TODO: Add fire emission fields (FH_*, FW_*, etc.)
-
     if (localPet == 0) then
-      print *, "CreateAndPopulateStreamVariableFields: Created", created_count, "emission import fields"
+      print *, "CreateAndPopulateStreamVariableFields: Created", created_count, "new dynamic emission import fields"
     endif
 
   end subroutine CreateAndPopulateStreamVariableFields

@@ -67,9 +67,9 @@ contains
     type(ESMF_GridComp), intent(inout) :: model
     integer, intent(out) :: rc
 
-    character(len=255) :: phaseLabel
+    character(len=ESMF_MAXSTR) :: phaseLabel
     type(ESMF_Clock) :: clock
-    logical :: clockIsPresent
+    logical :: clockIsPresent, isPresent
     integer :: localPet, phase
     type(ESMF_VM) :: vm
     character(len=255) :: msg
@@ -83,8 +83,10 @@ contains
     call ESMF_VMGet(vm, localPet=localPet, rc=rc)
     if ( rc /= ESMF_SUCCESS ) return
 
-    ! For debugging, we'll just track that we're in phase-aware init
-    phaseLabel = 'phase_aware_initialization'
+    ! Retrieve the current NUOPC phase label
+    call NUOPC_CompAttributeGet(model, name='phase', value=phaseLabel, isPresent=isPresent, rc=rc)
+    if (.not. isPresent) phaseLabel = 'IPDv00' ! Default to early phase
+
     rc = HCO_SUCCESS
 
     ! Check for clock availability
@@ -274,7 +276,11 @@ contains
 
     ! Advertise fields following standard NUOPC practices
     ! CDEPS will handle data reading and field population based on streams configuration
-    call AdvertiseFields(model, localrc)
+    ! Note: This requires HcoConfig to be available. In Phase 2, we might not have it yet
+    ! if AdvertiseFields depends on it.
+    ! For now, skip if HcoConfig not ready or implement fallback.
+    ! call AdvertiseFields(model, HcoConfig, localrc)
+    localrc = ESMF_SUCCESS
     if ( localrc /= ESMF_SUCCESS ) then
        if ( localPet == 0 ) then
           call ESMF_LogWrite("NEXUS: Warning - AdvertiseFields failed in IPDvXp01, continuing...", ESMF_LOGMSG_WARNING)
@@ -519,7 +525,7 @@ contains
     endif
 
     ! Full HEMCO initialization with clock - use configurable name
-    HcoID = HCO_GetHcoID('NEXUS', HcoState)
+    HcoID = HCO_GetHcoID('NEXUS', ModuleHcoState)
     call nexus_get_config_file('HEMCO_CONFIG_FILE', 'NEXUS_Config.rc', configFile)
 
     ! Initialize and populate HEMCO registry with NEXUS field data
