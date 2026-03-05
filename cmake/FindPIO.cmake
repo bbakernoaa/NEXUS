@@ -72,7 +72,7 @@ define_package_component(PIO
 define_package_component(PIO DEFAULT
                          COMPONENT Fortran
                          INCLUDE_NAMES pio.mod pio.inc
-                         LIBRARY_NAMES piof piofortran pio)
+                         LIBRARY_NAMES piof piofortran pio libpiof.a libpio.a)
 
 # Search for list of valid components requested
 find_valid_components(PIO)
@@ -91,12 +91,12 @@ foreach (pcomp IN LISTS PIO_FIND_VALID_COMPONENTS)
                               INCLUDE_DIRECTORIES ${MPI_${pcomp}_INCLUDE_PATH}
                               LIBRARIES ${MPI_${pcomp}_LIBRARIES})
             find_package_component(PIO COMPONENT ${pcomp}
-                                   PATHS ${PIO_${pcomp}_PATHS} /opt/views/view
-                                   HINTS ${PIO_ROOT} ${PIO_PATH} ${PIO_${pcomp}_PATH})
+                                   HINTS ${PIO_ROOT} ${PIO_PATH} ${PIO_${pcomp}_PATH}
+                                   PATHS ${PIO_${pcomp}_PATHS} /opt/views/view)
         else ()
             find_package_component(PIO COMPONENT ${pcomp}
-                                   PATHS /opt/views/view
-                                   HINTS ${PIO_ROOT} ${PIO_PATH} ${PIO_${pcomp}_PATH})
+                                   HINTS ${PIO_ROOT} ${PIO_PATH} ${PIO_${pcomp}_PATH}
+                                   PATHS /opt/views/view)
         endif ()
 
         # Continue only if component found

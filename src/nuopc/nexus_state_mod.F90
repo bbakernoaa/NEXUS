@@ -84,6 +84,7 @@ contains
     integer :: localPet, localrc, lun
     type(ESMF_VM) :: vm
     logical :: eof, isPresent
+    type(ESMF_StateItem_Flag) :: itemType
     character(len=63) :: cName, spcName, outUnit
     character(len=127) :: lName, unitName
     integer :: extNr, cat, hier, spaceDim
@@ -114,8 +115,9 @@ contains
           if (localrc /= HCO_SUCCESS .or. eof) exit
 
           ! Check if field already exists in exportState
-          call ESMF_StateGet(exportState, trim(cName), isPresent=isPresent, rc=localrc)
-          if (.not. isPresent) then
+          call ESMF_StateGet(exportState, itemName=trim(cName), isPresent=isPresent, rc=localrc)
+
+          if (localrc == ESMF_SUCCESS .and. .not. isPresent) then
              ! Create field on mesh for standard NUOPC export
              field = ESMF_FieldCreate(mesh, typekind=ESMF_TYPEKIND_R4, &
                                     name=trim(cName), rc=localrc)
@@ -157,7 +159,7 @@ contains
     if ( rc /= ESMF_SUCCESS ) return
 
     ! Get export field and update data
-    call ESMF_StateGet(exportState, 'NEXUS_EMISSIONS', field, rc=rc)
+    call ESMF_StateGet(exportState, itemName='NEXUS_EMISSIONS', field=field, rc=rc)
     if ( rc /= ESMF_SUCCESS ) then
        if ( localPet == 0 ) then
           call HCO_MSG('Warning: NEXUS_EMISSIONS field not found in export state')
@@ -238,7 +240,7 @@ contains
        ! Clean up fields
        do i = 1, itemCount
           if ( itemTypes(i) == ESMF_STATEITEM_FIELD ) then
-             call ESMF_StateGet(state, trim(itemNames(i)), field, rc=rc)
+             call ESMF_StateGet(state, itemName=trim(itemNames(i)), field=field, rc=rc)
              if ( rc == ESMF_SUCCESS ) then
                 call ESMF_FieldDestroy(field, rc=rc)
              endif

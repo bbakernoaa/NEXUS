@@ -7,6 +7,10 @@ module nexus_cdeps_inline_mod
 
   use ESMF
   use NUOPC
+  use HCO_TYPES_MOD
+  use HCO_STATE_MOD,     only: HCO_State
+  use HCO_DATACONT_MOD,  only: ListCont, ListCont_NextCont
+  use nexus_types,       only: ModuleHcoState
   use dshr_mod,          only: dshr_pio_init
   use dshr_strdata_mod,  only: shr_strdata_type, &
                                shr_strdata_init_from_inline, &
@@ -15,10 +19,6 @@ module nexus_cdeps_inline_mod
   use dshr_methods_mod,  only: dshr_fldbun_getfldptr, chkerr
   use shr_kind_mod,      only: r8 => shr_kind_r8
 
-  ! HEMCO core modules for bridge
-  use HCO_STATE_MOD,     only: HCO_State
-  use HCO_TYPES_MOD
-  use HCO_DATACONT_MOD,  only: ListCont_NextCont
 
   implicit none
 
@@ -156,20 +156,21 @@ contains
   !> @param[in] clock Model clock
   !> @param[in] mesh ESMF Mesh
   !> @param[out] rc Return code
-  subroutine nexus_cdeps_init_from_hemco(HcoState, gcomp, clock, mesh, rc)
-    type(HCO_State),     pointer     :: HcoState
+  subroutine nexus_cdeps_init_from_hemco(gcomp, clock, mesh, rc)
     type(ESMF_GridComp), intent(in)  :: gcomp
     type(ESMF_Clock),    intent(in)  :: clock
     type(ESMF_Mesh),     intent(in)  :: mesh
     integer,             intent(out) :: rc
 
     type(ListCont), pointer :: Lct
+    type(HCO_State), pointer :: HcoState
     integer :: unit, ios, localPet, stream_count
     type(ESMF_VM) :: vm
     character(len=255) :: stream_file = "cdeps_streams_from_hemco.config"
     character(len=1024) :: ncFile, ncPara
 
     rc = ESMF_SUCCESS
+    HcoState => ModuleHcoState
     if (.not. associated(HcoState)) then
         rc = ESMF_RC_ARG_BAD
         return

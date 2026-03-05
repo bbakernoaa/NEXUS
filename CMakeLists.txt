@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
+if(POLICY CMP0074)
+  cmake_policy(SET CMP0074 NEW)
+endif()
 
 # Set the project name and version
 project(NEXUS
@@ -34,6 +37,11 @@ if(USE_MPI)
     message(STATUS "MPI_Fortran_LIBRARIES: ${MPI_Fortran_LIBRARIES}")
   endif()
 endif()
+# Ensure Fortran modules are placed in a central directory expected by CDEPS
+set(CMAKE_Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/share CACHE PATH "Central module directory")
+file(MAKE_DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY})
+set(CDEPS_SHARE_MOD_DIR ${CMAKE_Fortran_MODULE_DIRECTORY})
+
 # Control where the static and shared libraries are built
 # so that on Windows we don't need to tinker with the path to run the executable
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
@@ -70,13 +78,31 @@ endif()
 # Add project's subdirectories
 # add_subdirectory(src/external/CDEPS)
 
-# Import external CDEPS (optional)
+# Import or build external CDEPS
 if(NEXUS_USE_INLINE_CDEPS)
-  if(EXISTS "${CDEPS_INTERFACE_DIR}/cdeps-targets.cmake")
-    include("${CDEPS_INTERFACE_DIR}/cdeps-targets.cmake")
-    message(STATUS "Included external CDEPS targets from ${CDEPS_INTERFACE_DIR}")
-  else()
-    message(STATUS "CDEPS targets file not found in ${CDEPS_INTERFACE_DIR}; will link libraries directly if provided by src/nuopc CMake")
+  include(FetchContent)
+
+  if(NOT TARGET cdeps)
+    if(EXISTS "${CDEPS_INTERFACE_DIR}/cdeps-targets.cmake")
+      include("${CDEPS_INTERFACE_DIR}/cdeps-targets.cmake")
+      message(STATUS "Included external CDEPS targets from ${CDEPS_INTERFACE_DIR}")
+    else()
+      message(STATUS "CDEPS targets not found at ${CDEPS_INTERFACE_DIR}. Fetching and building from source.")
+      FetchContent_Declare(
+        cdeps
+        GIT_REPOSITORY https://github.com/bbakernoaa/CDEPS.git
+        GIT_TAG feature/demis
+        SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/cdeps-src
+        BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/cdeps-build
+        PATCH_COMMAND git submodule update --init --recursive
+      )
+      # Suppress CDEPS internal library builds that we don't need
+      set(CDEPS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+      set(DISABLE_FoX ON CACHE BOOL "" FORCE)
+      set(ESMF_F90COMPILEPATHS "${ESMF_INCLUDE_DIRS}")
+
+      FetchContent_MakeAvailable(cdeps)
+    endif()
   endif()
 endif()
 

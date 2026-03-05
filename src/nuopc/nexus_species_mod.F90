@@ -59,6 +59,7 @@ contains
 
     ! Local variables
     integer :: ios, lun, lineNum
+    logical :: isSet
     character(len=255) :: line, msg
     character(len=255), parameter :: thisProcedure = 'NEXUS_ReadSpeciesFile'
 
@@ -72,8 +73,8 @@ contains
     ! Find free logical unit
     lun = 10
     do while (lun < 100)
-      inquire(unit=lun, opened=ios)
-      if (.not. ios) exit
+      inquire(unit=lun, opened=isSet)
+      if (.not. isSet) exit
       lun = lun + 1
     end do
 

@@ -13,7 +13,8 @@ module nexus_io_mod
   use mpi
   use ESMF
   use NUOPC_Base, only: NUOPC_Advertise, NUOPC_FieldDictionaryAddEntry
-  use nexus_types
+  use nexus_types, only: FieldDataEntry, FieldDataContainer, HistoryStream, cdeps_stream_wrapper, &
+                         ModuleHcoState, ModuleExtState
   use pio
 
   ! --- CDEPS Imports ---
@@ -284,7 +285,7 @@ contains
             call ESMF_StateGet(state, itemNameList=fieldNames, rc=localrc)
 
             do j = 1, fieldCount
-                call ESMF_StateGet(state, trim(fieldNames(j)), dstField, rc=localrc)
+                call ESMF_StateGet(state, itemName=trim(fieldNames(j)), field=dstField, rc=localrc)
                 if (localrc == ESMF_SUCCESS) then
                     ! Extract data from CDEPS and populate HEMCO field directly
                     call nexus_cdeps_get_data_pointer(trim(fieldNames(j)), dataPtr1d_r8, localrc)
@@ -309,7 +310,7 @@ contains
             call ESMF_StateGet(state, itemNameList=fieldNames, rc=localrc)
 
             do j = 1, fieldCount
-                call ESMF_StateGet(state, trim(fieldNames(j)), dstField, rc=localrc)
+                call ESMF_StateGet(state, itemName=trim(fieldNames(j)), field=dstField, rc=localrc)
                 if (localrc == ESMF_SUCCESS) then
                     call PopulateTestFieldData(dstField, trim(fieldNames(j)), localrc)
                     if (localrc == ESMF_SUCCESS) then
@@ -600,7 +601,7 @@ contains
             index(streamName, 'SCALING') > 0) then
 
           ! Get the field from importState
-          call ESMF_StateGet(importState, fieldName, field, rc=localrc)
+          call ESMF_StateGet(importState, itemName=fieldName, field=field, rc=localrc)
           if (localrc == ESMF_SUCCESS) then
 
             if (localPet == 0) print *, "  Extracting emission field: ", trim(fieldName)
@@ -655,8 +656,6 @@ contains
     use HCO_STATE_MOD,     only: HCO_State
     use HCO_TYPES_MOD
     use HCO_DATACONT_MOD,  only: ListCont_NextCont
-    use nexus_initialize_mod, only: ModuleHcoState
-
     type(ESMF_State), intent(inout) :: importState
     type(ESMF_Grid), intent(in) :: grid
     integer, intent(in) :: localPet
@@ -682,8 +681,8 @@ contains
 
                     fieldName = trim(Lct%Dct%cName) // ':' // trim(Lct%Dct%Dta%ncPara)
 
-                    ! Check if field already exists in importState
-                    call ESMF_StateGet(importState, trim(fieldName), isPresent=isPresent, rc=localrc)
+                    ! Check if field already exists in exportState
+                    call ESMF_StateGet(importState, itemName=trim(fieldName), isPresent=isPresent, rc=localrc)
                     if (.not. isPresent) then
                         call CreateAndPopulateStreamField(importState, grid, fieldName, &
                                                           trim(Lct%Dct%cName), &
@@ -1327,7 +1326,7 @@ contains
     rc = ESMF_SUCCESS
 
     ! Try to get field from import state
-    call ESMF_StateGet(importState, trim(sourceName), field, rc=rc)
+    call ESMF_StateGet(importState, itemName=trim(sourceName), field=field, rc=rc)
     if (rc /= ESMF_SUCCESS) then
       ! Field not found - not an error for dynamic discovery
       print *, "    ⚠ Import field not found:", trim(sourceName)

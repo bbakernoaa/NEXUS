@@ -35,7 +35,8 @@ module nexus_cap
   use nexus_state_mod, only: nxs_diag_state_init_disabled, nxs_diag_state_update, &
                              nxs_expt_state_init, nxs_expt_state_update, &
                              nxs_state_finalize, nxs_create_hemco_diagnostics
-  use nexus_initialize_mod, only: nexus_initialize_phase_aware, ModuleHcoState, ModuleExtState
+  use nexus_types, only: ModuleHcoState, ModuleExtState
+  use nexus_initialize_mod, only: nexus_initialize_phase_aware
   use nexus_io_mod, only: IO_Init, IO_Read, TransferFieldsToHEMCO, CreateAndPopulateStreamVariableFields
   use nexus_species_mod, only: NEXUS_RegisterSpecies
 
@@ -194,14 +195,6 @@ contains
       file=__FILE__)) &
       return  ! bail out
 
-    ! We use the standard Initialize phase
-    if (localPet == rootPet) print *, "NEXUS: Specialize DataInitialize"
-    call NUOPC_CompSpecialize(model, specLabel=label_DataInitialize, &
-      specRoutine=DataInitialize, rc=rc)
-    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
-      line=__LINE__, &
-      file=__FILE__)) &
-      return  ! bail out
 
     if (localPet == rootPet) print *, "NEXUS: SetServices Done"
 
@@ -371,7 +364,7 @@ contains
     do item = 1, itemCount
       if (itemTypeList(item) /= ESMF_STATEITEM_FIELD) cycle
 
-      call ESMF_StateGet(exportState, itemNameList(item), field, rc=localrc)
+      call ESMF_StateGet(exportState, itemName=itemNameList(item), field=field, rc=localrc)
       if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
         line=__LINE__,  &
         file=__FILE__,  &
@@ -419,7 +412,7 @@ contains
       do item = 1, itemCount
         if (itemTypeList(item) /= ESMF_STATEITEM_FIELD) cycle
 
-        call ESMF_StateGet(importState, itemNameList(item), field, rc=localrc)
+        call ESMF_StateGet(importState, itemName=itemNameList(item), field=field, rc=localrc)
         if (ESMF_LogFoundError(rcToCheck=localrc, msg=ESMF_LOGERR_PASSTHRU, &
           line=__LINE__,  &
           file=__FILE__,  &
@@ -875,7 +868,7 @@ contains
     if ( rc == ESMF_SUCCESS ) then
        call ESMF_VMGet(vm, localPet=localPet, rc=rc)
        if (localPet == 0 .and. rc == ESMF_SUCCESS) then
-          print *, "NEXUS DEBUG: Initialize called, ModuleHcoState associated before:", associated(ModuleHcoState)
+          print *, "NEXUS: Initialize called, ModuleHcoState associated before:", associated(ModuleHcoState)
        endif
     endif
 
@@ -889,7 +882,7 @@ contains
 
     ! Check if ModuleHcoState is now properly initialized
     if ( rc == ESMF_SUCCESS .and. localPet == 0) then
-       print *, "NEXUS DEBUG: After initialization, ModuleHcoState associated:", associated(ModuleHcoState)
+       print *, "NEXUS: After initialization, ModuleHcoState associated:", associated(ModuleHcoState)
     endif
 
     rc = HCO_SUCCESS
@@ -967,7 +960,8 @@ contains
     use HCO_Clock_Mod,   only: HcoClock_Increase
     use HCOIO_DIAGN_MOD, only: HcoDiagn_Write
     use HCO_Diagn_Mod,   only: DiagnBundle_Cleanup
-    use nexus_initialize_mod, only: ModuleHcoState, ModuleExtState, nexus_finalize_module_variables
+    use nexus_types, only: ModuleHcoState, ModuleExtState
+    use nexus_initialize_mod, only: nexus_finalize_module_variables
 
     type(ESMF_GridComp) :: model
     integer, intent(out) :: rc
