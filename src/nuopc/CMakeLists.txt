@@ -92,7 +92,6 @@ endif()
 target_link_libraries(NEXUS_Shared
   PUBLIC HCOI_Shared
   PUBLIC HCOI_NUOPC
-  PUBLIC HCOI_Standalone
 )
 
 # Link to CDEPS and PIO only when inline CDEPS is enabled
