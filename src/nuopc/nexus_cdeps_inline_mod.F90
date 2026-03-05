@@ -7,7 +7,9 @@ module nexus_cdeps_inline_mod
 
   use ESMF
   use NUOPC
-  use HCO_TYPES_MOD
+  use HCO_TYPES_MOD,     only: HCO_DCTTYPE_BASE, HCO_CFLAG_CYCLE, &
+                               HCO_CFLAG_RANGE, HCO_CFLAG_EXACT,  &
+                               HCO_CFLAG_RANGEAVG, ListCont
   use HCO_STATE_MOD,     only: HCO_State
   use HCO_DATACONT_MOD,  only: ListCont, ListCont_NextCont
   use nexus_types,       only: ModuleHcoState

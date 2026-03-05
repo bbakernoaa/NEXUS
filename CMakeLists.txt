@@ -42,6 +42,11 @@ set(CMAKE_Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/share CACHE PATH "Central
 file(MAKE_DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY})
 set(CDEPS_SHARE_MOD_DIR ${CMAKE_Fortran_MODULE_DIRECTORY})
 
+# Global Fortran flags to prevent line truncation in fetched dependencies (like CDEPS)
+if(CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")
+  set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -ffree-line-length-none" CACHE STRING "Global Fortran flags" FORCE)
+endif()
+
 # Control where the static and shared libraries are built
 # so that on Windows we don't need to tinker with the path to run the executable
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
@@ -50,7 +55,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 
 # Do not build HEMCO standalone executable
 set(HEMCO_EXTERNAL_CONFIG ON CACHE BOOL "Build HEMCO as an external component")
-set(NUOPC_ESMF ON CACHE BOOL "Enable NUOPC interface for HEMCO")
+set(NUOPC_ESMF ON CACHE BOOL "Enable NUOPC interface for HEMCO" FORCE)
+set(HEMCO_INTERFACE "esmf" CACHE STRING "HEMCO interface type" FORCE)
 
 if(CMAKE_BUILD_TYPE)
   string(TOUPPER ${CMAKE_BUILD_TYPE} UPPER_CMAKE_BUILD_TYPE)
