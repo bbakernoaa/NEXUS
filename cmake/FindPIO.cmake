@@ -1,7 +1,7 @@
 # - Try to find PIO
 #
-# This can be controled by setting PIO_PATH or PIO_<lang>_PATH Cmake variables,
-# where <lang> is the COMPONENT language one needs.
+# This can be controlled by setting PIO_ROOT, PIO_PATH or PIO_<lang>_PATH
+# Cmake variables, where <lang> is the COMPONENT language one needs.
 #
 # Once done, this will define:
 #
@@ -13,20 +13,66 @@
 #
 # Available COMPONENTS are: C Fortran
 # If no components are specified only C is assumed
+
+# Try Config mode first
+if(NOT PIO_FOUND)
+  if(NOT PIO_ROOT AND DEFINED ENV{PIO_ROOT})
+    set(PIO_ROOT $ENV{PIO_ROOT})
+  endif()
+  if(PIO_ROOT)
+    find_package(PIO CONFIG QUIET HINTS ${PIO_ROOT})
+    if(NOT PIO_FOUND)
+      find_package(parallelio CONFIG QUIET HINTS ${PIO_ROOT})
+    endif()
+  else()
+    find_package(PIO CONFIG QUIET)
+    if(NOT PIO_FOUND)
+      find_package(parallelio CONFIG QUIET)
+    endif()
+  endif()
+endif()
+
+# Map parallelio variables to PIO if needed
+if(parallelio_FOUND AND NOT PIO_FOUND)
+  set(PIO_FOUND TRUE)
+  if(TARGET parallelio::piof)
+    set(PIO_Fortran_FOUND TRUE)
+    set(PIO_Fortran_LIBRARIES parallelio::piof)
+    get_target_property(PIO_Fortran_INCLUDE_DIR parallelio::piof INTERFACE_INCLUDE_DIRECTORIES)
+    set(PIO_Fortran_INCLUDE_DIRS ${PIO_Fortran_INCLUDE_DIR})
+  endif()
+  if(TARGET parallelio::pioc)
+    set(PIO_C_FOUND TRUE)
+    set(PIO_C_LIBRARIES parallelio::pioc)
+    get_target_property(PIO_C_INCLUDE_DIR parallelio::pioc INTERFACE_INCLUDE_DIRECTORIES)
+    set(PIO_C_INCLUDE_DIRS ${PIO_C_INCLUDE_DIR})
+  endif()
+endif()
+
+if(PIO_FOUND AND TARGET PIO::piof)
+  set(PIO_Fortran_FOUND TRUE)
+  set(PIO_Fortran_LIBRARIES PIO::piof)
+  get_target_property(PIO_Fortran_INCLUDE_DIR PIO::piof INTERFACE_INCLUDE_DIRECTORIES)
+  set(PIO_Fortran_INCLUDE_DIRS ${PIO_Fortran_INCLUDE_DIR})
+  return()
+elseif(PIO_Fortran_FOUND)
+  return()
+endif()
+
 include (LibFind)
 include (LibCheck)
 
 # Define PIO C Component
-define_package_component(PIO DEFAULT
+define_package_component(PIO
                          COMPONENT C
                          INCLUDE_NAMES pio.h
-                         LIBRARY_NAMES pioc)
+                         LIBRARY_NAMES pio pioc)
 
 # Define PIO Fortran Component
-define_package_component(PIO
+define_package_component(PIO DEFAULT
                          COMPONENT Fortran
                          INCLUDE_NAMES pio.mod pio.inc
-                         LIBRARY_NAMES piof)
+                         LIBRARY_NAMES piof piofortran pio libpiof.a libpio.a)
 
 # Search for list of valid components requested
 find_valid_components(PIO)
@@ -45,9 +91,12 @@ foreach (pcomp IN LISTS PIO_FIND_VALID_COMPONENTS)
                               INCLUDE_DIRECTORIES ${MPI_${pcomp}_INCLUDE_PATH}
                               LIBRARIES ${MPI_${pcomp}_LIBRARIES})
             find_package_component(PIO COMPONENT ${pcomp}
-                                   PATHS ${PIO_${pcomp}_PATHS})
+                                   HINTS ${PIO_ROOT} ${PIO_PATH} ${PIO_${pcomp}_PATH}
+                                   PATHS ${PIO_${pcomp}_PATHS} /opt/views/view)
         else ()
-            find_package_component(PIO COMPONENT ${pcomp} HINT PIO_${pcomp}_PATH=${PIO_PATH})
+            find_package_component(PIO COMPONENT ${pcomp}
+                                   HINTS ${PIO_ROOT} ${PIO_PATH} ${PIO_${pcomp}_PATH}
+                                   PATHS /opt/views/view)
         endif ()
 
         # Continue only if component found

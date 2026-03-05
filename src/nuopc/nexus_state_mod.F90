@@ -67,50 +67,67 @@ contains
 
   end subroutine nxs_diag_state_update
 
-  !> @brief Initialize export state
-  !> @param[in] grid ESMF grid object
-  !> @param[inout] importState ESMF import state
+  !> @brief Initialize export state based on HEMCO diagnostics
+  !> @param[in] mesh ESMF mesh object
   !> @param[inout] exportState ESMF export state
+  !> @param[in] HcoState HEMCO state object
   !> @param[out] rc Return code
-  subroutine nxs_expt_state_init( grid, importState, exportState, rc )
+  subroutine nxs_expt_state_init( mesh, exportState, HcoState, rc )
+    use HCO_Diagn_Mod, only: DiagnFileOpen, DiagnFileGetNext, DiagnFileClose
 
-    type(ESMF_Grid), intent(in) :: grid
-    type(ESMF_State), intent(inout) :: importState
+    type(ESMF_Mesh), intent(in) :: mesh
     type(ESMF_State), intent(inout) :: exportState
+    type(Hco_State), pointer, intent(in) :: HcoState
     integer, intent(out) :: rc
 
     type(ESMF_Field) :: field
-    character(len=255) :: fieldName
-    integer :: localPet, petCount
+    integer :: localPet, localrc, lun
     type(ESMF_VM) :: vm
+    logical :: eof, isPresent
+    type(ESMF_StateItem_Flag) :: itemType
+    character(len=63) :: cName, spcName, outUnit
+    character(len=127) :: lName, unitName
+    integer :: extNr, cat, hier, spaceDim
 
     rc = HCO_SUCCESS
 
-    ! Get VM info
     call ESMF_VMGetCurrent(vm, rc=rc)
-    if ( rc /= ESMF_SUCCESS ) return
+    call ESMF_VMGet(vm, localPet=localPet, rc=rc)
 
-    call ESMF_VMGet(vm, localPet=localPet, petCount=petCount, rc=rc)
-    if ( rc /= ESMF_SUCCESS ) return
-
-    ! Initialize basic export fields
-    fieldName = 'NEXUS_EMISSIONS'
-    field = ESMF_FieldCreate(grid, typekind=ESMF_TYPEKIND_R4, &
-                           staggerloc=ESMF_STAGGERLOC_CENTER, &
-                           name=trim(fieldName), rc=rc)
-    if ( rc /= ESMF_SUCCESS ) then
-       call HCO_ERROR('Error creating export field: ' // trim(fieldName), rc)
+    if (.not. associated(HcoState) .or. .not. associated(HcoState%Config)) then
+       rc = HCO_SUCCESS
        return
     endif
 
-    call ESMF_StateAdd(exportState, (/field/), rc=rc)
-    if ( rc /= ESMF_SUCCESS ) then
-       call HCO_ERROR('Error adding field to export state: ' // trim(fieldName), rc)
+    if (localPet == 0) call HCO_MSG('NEXUS: Initializing Export State from HEMCO diagnostics')
+
+    call DiagnFileOpen( HcoState%Config, lun, localrc )
+    if (localrc /= HCO_SUCCESS) then
+       rc = localrc
        return
     endif
 
-    if ( localPet == 0 ) then
-       call HCO_MSG('Export state initialized with basic emissions field')
+    if (lun > 0) then
+       do
+          call DiagnFileGetNext( HcoState%Config, lun, cName, spcName, extNr, cat, &
+                                 hier, spaceDim, outUnit, eof, localrc, &
+                                 lName=lName, unitName=unitName )
+          if (localrc /= HCO_SUCCESS .or. eof) exit
+
+          ! Check if field already exists in exportState
+          call ESMF_StateGet(exportState, itemName=trim(cName), isPresent=isPresent, rc=localrc)
+
+          if (localrc == ESMF_SUCCESS .and. .not. isPresent) then
+             ! Create field on mesh for standard NUOPC export
+             field = ESMF_FieldCreate(mesh, typekind=ESMF_TYPEKIND_R4, &
+                                    name=trim(cName), rc=localrc)
+             if (localrc == ESMF_SUCCESS) then
+                call ESMF_StateAdd(exportState, (/field/), rc=localrc)
+                if (localPet == 0) print *, "  + Created export field: ", trim(cName)
+             endif
+          endif
+       end do
+       call DiagnFileClose(lun)
     endif
 
     rc = HCO_SUCCESS
@@ -142,7 +159,7 @@ contains
     if ( rc /= ESMF_SUCCESS ) return
 
     ! Get export field and update data
-    call ESMF_StateGet(exportState, 'NEXUS_EMISSIONS', field, rc=rc)
+    call ESMF_StateGet(exportState, itemName='NEXUS_EMISSIONS', field=field, rc=rc)
     if ( rc /= ESMF_SUCCESS ) then
        if ( localPet == 0 ) then
           call HCO_MSG('Warning: NEXUS_EMISSIONS field not found in export state')
@@ -223,7 +240,7 @@ contains
        ! Clean up fields
        do i = 1, itemCount
           if ( itemTypes(i) == ESMF_STATEITEM_FIELD ) then
-             call ESMF_StateGet(state, trim(itemNames(i)), field, rc=rc)
+             call ESMF_StateGet(state, itemName=trim(itemNames(i)), field=field, rc=rc)
              if ( rc == ESMF_SUCCESS ) then
                 call ESMF_FieldDestroy(field, rc=rc)
              endif

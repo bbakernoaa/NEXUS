@@ -1,8 +1,8 @@
-!> @brief NUOPC Field Advertisement Module  
+!> @brief NUOPC Field Advertisement Module
 !> @details Standard NUOPC field advertisement for inline CDEPS mode.
 !> Only advertises export fields since data reading is handled internally
 !> via shr_strdata rather than external component dependencies.
-!> @authors Barry Baker  
+!> @authors Barry Baker
 !> @version 2.0
 !> @date 2026-01-06
 
@@ -12,34 +12,33 @@ module nexus_field_advertisement_mod
   use NUOPC
   use NUOPC_Model, only: NUOPC_ModelGet
   use nexus_config_mod, only: nxs_read_full_config
-  
+
   implicit none
   private
-  
+
   public :: AdvertiseFields
-  
+
 contains
 
   !> @brief Advertise import and export fields following NUOPC standards
-  !> @details This subroutine dynamically reads the input streams configuration
-  !> and advertises fields that NEXUS requires for import (to be provided by CDEPS).
-  !> This follows standard NUOPC practices where components only advertise field 
-  !> names in the Advertise phase, and CDEPS handles actual data provision.
-  !> In standalone mode, no import fields are advertised since NEXUS provides its own data.
-  subroutine AdvertiseFields(model, rc)
+  !> @details This subroutine dynamically identifies required import fields
+  !> based on the HEMCO configuration and advertises them.
+  subroutine AdvertiseFields(model, HcoConfig, rc)
+    use HCO_STATE_MOD,     only: HCO_State
+    use HCO_TYPES_MOD
+    use HCO_DATACONT_MOD,  only: ListCont_NextCont
+
     type(ESMF_GridComp), intent(inout) :: model
+    type(ConfigObj), pointer, intent(in) :: HcoConfig
     integer, intent(out) :: rc
 
     type(ESMF_State) :: importState, exportState
     integer :: localrc
     type(ESMF_VM) :: vm
     integer :: localPet
-    character(len=256) :: configFileName
-    integer :: i, j, numStreams, numVars
-    character(len=64), allocatable :: streamNames(:)
-    character(len=64), allocatable :: varNames(:)
-    character(len=128) :: fieldName
-    
+    character(len=256) :: fieldName
+    type(ListCont), pointer :: Lct
+
     ! Check for standalone mode
     logical :: standalone_mode
     character(len=255) :: hemco_config_file, grid_file, regrid_file
@@ -78,30 +77,28 @@ contains
       line=__LINE__, file=__FILE__, rcToReturn=rc)) return
 
     if (localPet == 0) then
-      call ESMF_LogWrite("NEXUS: Dynamically advertising import fields from streams config...", ESMF_LOGMSG_INFO)
+      call ESMF_LogWrite("NEXUS: Dynamically advertising import fields from HEMCO configuration...", ESMF_LOGMSG_INFO)
     end if
 
-    ! Read input streams configuration to get field names dynamically
-    configFileName = "nexus_input_streams.yaml"
-    call ReadInputStreamsConfig(configFileName, streamNames, varNames, numStreams, localrc)
-    if (localrc /= ESMF_SUCCESS) then
-      if (localPet == 0) then
-        call ESMF_LogWrite("NEXUS: Warning - Failed to read input streams config, using default fields", ESMF_LOGMSG_WARNING)
-      end if
-      ! Fall back to minimal hardcoded set
-      call AdvertiseDefaultFields(importState, localrc)
+    ! Identify import fields from HEMCO configuration
+    if (associated(HcoConfig)) then
+        Lct => HcoConfig%ConfigList
+        do while (associated(Lct))
+            if (associated(Lct%Dct)) then
+                ! Advertise any field that is read from a file as a potential import
+                if (Lct%Dct%DctType == HCO_DCTTYPE_BASE .and. Lct%Dct%Dta%ncRead .and. &
+                    trim(Lct%Dct%Dta%ncFile) /= '-' .and. trim(Lct%Dct%Dta%ncPara) /= '-') then
+
+                    fieldName = trim(Lct%Dct%cName) // ':' // trim(Lct%Dct%Dta%ncPara)
+                    call NUOPC_Advertise(importState, StandardName=trim(fieldName), rc=localrc)
+                    if (localPet == 0) print *, "  + Advertised import: ", trim(fieldName)
+                endif
+            endif
+            Lct => Lct%NextCont
+        enddo
     else
-      ! For external CDEPS mode, advertise import fields for proper coupling
-      call AdvertiseImportFieldsFromConfig(importState, streamNames, varNames, numStreams, localrc)
-    end if
-
-    ! Advertise export fields (emissions output for other components)
-    if (localPet == 0) then
-      call ESMF_LogWrite("NEXUS: Advertising export fields for emission output...", ESMF_LOGMSG_INFO)
-    end if
-
-    ! Export fields will be populated by HEMCO and made available to other components
-    ! This follows the NUOPC pattern where emission models export their computed emissions
+        if (localPet == 0) call ESMF_LogWrite("NEXUS: WARNING - HcoConfig not associated in Advertise phase", ESMF_LOGMSG_WARNING)
+    endif
 
     if (localPet == 0) then
       call ESMF_LogWrite("NEXUS: Field advertisement completed successfully", ESMF_LOGMSG_INFO)
@@ -164,14 +161,14 @@ contains
     character(len=256) :: line
     character(len=64) :: streamName
     logical :: inStream, inDatavars
-    
+
     numStreams = 0
     varCount = 0
-    
+
     ! Allocate arrays for maximum possible size
     allocate(streamNames(MAX_STREAMS * MAX_VARS_PER_STREAM))
     allocate(varNames(MAX_STREAMS * MAX_VARS_PER_STREAM))
-    
+
     ! Open YAML file
     open(newunit=unit, file=filename, status='old', action='read', iostat=ios)
     if (ios /= 0) then
@@ -189,7 +186,7 @@ contains
       if (ios /= 0) exit
 
       line = adjustl(line)
-      
+
       ! Check for stream name
       if (index(line, '- name:') > 0) then
         inStream = .true.
@@ -198,12 +195,12 @@ contains
         i = index(line, 'name:') + 5
         streamName = trim(adjustl(line(i:)))
       end if
-      
+
       ! Check for datavars section
       if (inStream .and. index(line, 'datavars:') > 0) then
         inDatavars = .true.
       end if
-      
+
       ! Extract variable names from datavars section
       if (inStream .and. inDatavars .and. index(line, '- ') == 1) then
         varCount = varCount + 1
@@ -226,7 +223,7 @@ contains
 
     ! For inline CDEPS mode, skip all import field advertising
     ! Data reading is handled internally
-    
+
     rc = ESMF_SUCCESS
 
   end subroutine AdvertiseDefaultFields

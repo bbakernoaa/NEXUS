@@ -10,15 +10,22 @@
 module nexus_types
 
   use ESMF
+  use HCO_STATE_MOD,     only: HCO_State
+  use HCOX_STATE_MOD,    only: Ext_State
 
   implicit none
 
   private
 
   !----------------------------------------------------------------------------
-  ! Public types
+  ! Public types and variables
   !----------------------------------------------------------------------------
   public :: FieldDataEntry, FieldDataContainer, HistoryStream, cdeps_stream_wrapper
+  public :: ModuleHcoState, ModuleExtState
+
+  ! Module-level HEMCO state - avoids ESMF internal state issues and circular dependencies
+  type(Hco_State), pointer, save :: ModuleHcoState => null()
+  type(Ext_State), pointer, save :: ModuleExtState => null()
 
   !----------------------------------------------------------------------------
   ! Field data container types

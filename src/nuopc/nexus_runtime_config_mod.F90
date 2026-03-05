@@ -127,7 +127,7 @@ contains
 
     ! Check for environment variable first
     call get_environment_variable('NEXUS_GRID_FILE', grid_file)
-    
+
     if ( len_trim(grid_file) > 0 ) then
        ! User specified grid file
        inquire(file=trim(grid_file), exist=file_exists)

@@ -13,15 +13,15 @@ module nexus_initialize_mod
   use NUOPC_Model, only: NUOPC_ModelGet
   use NUOPC, only: NUOPC_CompGet, NUOPC_CompAttributeSet
   use HCO_Error_Mod, only: HCO_SUCCESS
-  use HCO_STATE_MOD, only: Hco_State, HcoState_Init, HCO_GetHcoID
+  use HCO_STATE_MOD, only: HcoState_Init, HCO_GetHcoID
   use HCO_Config_Mod, only: Config_ReadFile
   use HCO_Driver_Mod, only: HCO_Init
   use HCOX_Driver_Mod, only: HCOX_Init
-  use HCO_TYPES_MOD, only: ConfigObj
-  use HCOX_STATE_MOD, only: Ext_State, ExtStateInit
-  use HCO_STATE_MOD, only: HcoState_Init, HCO_GetHcoID
-  use HCO_TYPES_MOD, only: HCO_SUCCESS
+  use HCO_TYPES_MOD, only: ConfigObj, HCO_SUCCESS
+  use HCOX_STATE_MOD, only: ExtStateInit
   use HCOI_NUOPC_MOD, only: HCO_SetServices_NUOPC, HCO_SetExtState_NUOPC
+  use nexus_types, only: ModuleHcoState, ModuleExtState
+  use nexus_cdeps_inline_mod, only: nexus_cdeps_init_from_hemco
   use nexus_grid_mod, only: nxs_create_hco_grid, nxs_create_hco_grid_static, nxs_set_hco_grid, nxs_set_hco_mesh
   use nexus_config_mod, only: nxs_read_time_config
   use nexus_state_mod, only: nxs_diag_state_init_disabled, nxs_create_hemco_diagnostics
@@ -48,11 +48,6 @@ module nexus_initialize_mod
   integer, parameter :: NEXUS_PHASE_SERVICES = 3 ! SetServices, limited clock
   integer, parameter :: NEXUS_PHASE_FULL = 4     ! Full initialization with clock
 
-  ! Module-level HEMCO state - avoids ESMF internal state issues
-  type(Hco_State), pointer, save :: ModuleHcoState => null()
-  type(Ext_State), pointer, save :: ModuleExtState => null()
-
-  public :: ModuleHcoState, ModuleExtState
 
 contains
 
@@ -66,9 +61,9 @@ contains
     type(ESMF_GridComp), intent(inout) :: model
     integer, intent(out) :: rc
 
-    character(len=255) :: phaseLabel
+    character(len=ESMF_MAXSTR) :: phaseLabel
     type(ESMF_Clock) :: clock
-    logical :: clockIsPresent
+    logical :: clockIsPresent, isPresent
     integer :: localPet, phase
     type(ESMF_VM) :: vm
     character(len=255) :: msg
@@ -82,8 +77,10 @@ contains
     call ESMF_VMGet(vm, localPet=localPet, rc=rc)
     if ( rc /= ESMF_SUCCESS ) return
 
-    ! For debugging, we'll just track that we're in phase-aware init
-    phaseLabel = 'phase_aware_initialization'
+    ! Retrieve the current NUOPC phase label
+    call NUOPC_CompAttributeGet(model, name='phase', value=phaseLabel, isPresent=isPresent, rc=rc)
+    if (.not. isPresent) phaseLabel = 'IPDv00' ! Default to early phase
+
     rc = HCO_SUCCESS
 
     ! Check for clock availability
@@ -273,7 +270,11 @@ contains
 
     ! Advertise fields following standard NUOPC practices
     ! CDEPS will handle data reading and field population based on streams configuration
-    call AdvertiseFields(model, localrc)
+    ! Note: This requires HcoConfig to be available. In Phase 2, we might not have it yet
+    ! if AdvertiseFields depends on it.
+    ! For now, skip if HcoConfig not ready or implement fallback.
+    ! call AdvertiseFields(model, HcoConfig, localrc)
+    localrc = ESMF_SUCCESS
     if ( localrc /= ESMF_SUCCESS ) then
        if ( localPet == 0 ) then
           call ESMF_LogWrite("NEXUS: Warning - AdvertiseFields failed in IPDvXp01, continuing...", ESMF_LOGMSG_WARNING)
@@ -325,8 +326,8 @@ contains
 
     type(ESMF_Mesh) :: mesh
     type(ESMF_State) :: importState, exportState
-    type(Hco_State), pointer :: HcoState => null()
-    type(ConfigObj), pointer :: HcoConfig => null()
+    type(Hco_State), pointer :: HcoState
+    type(ConfigObj), pointer :: HcoConfig
     integer :: localPet
     type(ESMF_VM) :: vm
     character(len=255) :: configFile
@@ -353,6 +354,8 @@ contains
     endif
 
     ! Initialize minimal HEMCO state for services
+    HcoState  => null()
+    HcoConfig => null()
     call HcoState_Init(HcoState, HcoConfig, 0, rc)
     if ( rc /= HCO_SUCCESS ) then
        call ESMF_LogWrite("NEXUS: Error initializing HEMCO state", ESMF_LOGMSG_ERROR)
@@ -437,12 +440,12 @@ contains
     type(ESMF_GridComp), intent(inout) :: model
     integer, intent(out) :: rc
 
-   type(ESMF_Mesh) :: mesh
+    type(ESMF_Mesh) :: mesh
     type(ESMF_State) :: importState, exportState
     type(ESMF_Clock) :: clock
-    type(Hco_State), pointer :: HcoState => null()
-    type(ConfigObj), pointer :: HcoConfig => null()
-    type(Ext_State), pointer :: ExtState => null()
+    type(Hco_State), pointer :: HcoState
+    type(ConfigObj), pointer :: HcoConfig
+    type(Ext_State), pointer :: ExtState
     integer :: localPet, HcoID
     type(ESMF_VM) :: vm
     character(len=255) :: configFile
@@ -477,6 +480,7 @@ contains
 
        ! Initialize HEMCO state now since earlier phases may have been skipped
        ! This can happen in single-component mode
+    HcoConfig => null()
        call nexus_get_config_file('HEMCO_CONFIG_FILE', 'NEXUS_Config.rc', configFile)
        call Config_ReadFile((localPet == 0), HcoConfig, configFile, 0, rc)
        if ( rc /= HCO_SUCCESS ) then
@@ -518,7 +522,7 @@ contains
     endif
 
     ! Full HEMCO initialization with clock - use configurable name
-    HcoID = HCO_GetHcoID('NEXUS', HcoState)
+    HcoID = HCO_GetHcoID('NEXUS', ModuleHcoState)
     call nexus_get_config_file('HEMCO_CONFIG_FILE', 'NEXUS_Config.rc', configFile)
 
     ! Initialize and populate HEMCO registry with NEXUS field data
@@ -536,6 +540,7 @@ contains
     endif
 
     ! Initialize external state
+    ExtState => null()
     call ExtStateInit(ExtState, rc)
     if ( rc /= HCO_SUCCESS ) then
        call ESMF_LogWrite("NEXUS: Error initializing external state", ESMF_LOGMSG_ERROR)
@@ -543,6 +548,7 @@ contains
     endif
 
     ! Set up external state with NUOPC interface
+    ModuleExtState => ExtState
     call HCO_SetExtState_NUOPC(HcoState, ExtState, rc)
     if ( rc /= HCO_SUCCESS ) then
        call ESMF_LogWrite("NEXUS: Error setting up external state for NUOPC", ESMF_LOGMSG_ERROR)
@@ -563,7 +569,17 @@ contains
        return
     endif
 
-    ! Initialize IO (History + Inline CDEPS) now that mesh and clock are available
+    ! Initialize CDEPS streams directly from HEMCO configuration
+    if ( localPet == 0 ) then
+       call ESMF_LogWrite("Phase 4: Initializing CDEPS streams from HEMCO...", ESMF_LOGMSG_INFO)
+    endif
+    call nexus_cdeps_init_from_hemco(model, clock, mesh, rc)
+    if ( rc /= ESMF_SUCCESS ) then
+       call ESMF_LogWrite("NEXUS: Error initializing CDEPS streams from HEMCO", ESMF_LOGMSG_ERROR)
+       return
+    endif
+
+    ! Initialize IO (History) now that mesh and clock are available
     call IO_Init(mesh, clock, rc)
     if ( rc /= ESMF_SUCCESS ) then
        call ESMF_LogWrite("NEXUS: Warning - IO_Init failed; falling back to test data in IO_Read", ESMF_LOGMSG_WARNING)

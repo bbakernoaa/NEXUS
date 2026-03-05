@@ -129,7 +129,7 @@ endfunction ()
 #   INCLUDE_DIRECTORIES
 #   LIBRARIES
 #
-# Ouput:
+# Output:
 #   ${PATHLIST}
 #
 function (initialize_paths PATHLIST)
@@ -219,6 +219,15 @@ function (find_package_component PKG)
         if (DEFINED ENV{${PKGUP}})
             list (APPEND SEARCH_DIRS $ENV{${PKGUP}})
         endif ()
+        if (DEFINED ENV{${PKG}_ROOT})
+            list (APPEND SEARCH_DIRS $ENV{${PKG}_ROOT})
+        endif ()
+        if (DEFINED ENV{${PKGUP}_ROOT})
+            list (APPEND SEARCH_DIRS $ENV{${PKGUP}_ROOT})
+        endif ()
+        if (CMAKE_PREFIX_PATH)
+            list (APPEND SEARCH_DIRS ${CMAKE_PREFIX_PATH})
+        endif ()
         if (CMAKE_SYSTEM_PREFIX_PATH)
             list (APPEND SEARCH_DIRS ${CMAKE_SYSTEM_PREFIX_PATH})
         endif ()
@@ -234,73 +243,31 @@ function (find_package_component PKG)
             endif ()
         endforeach ()
 
-        foreach (dir IN LISTS SEARCH_DIRS)
+        # Robust search using standard CMake find_path and find_library
+        # These commands are built-in and correctly handle prefixes and caching
+        find_path(${PKGCOMP}_INCLUDE_DIR
+                  NAMES ${${PKGCOMP}_INCLUDE_NAMES}
+                  HINTS ${SEARCH_DIRS}
+                  PATHS ${SEARCH_DIRS}
+                  PATH_SUFFIXES include)
 
-            # Search for include file names in current dirrectory
-            foreach (iname IN LISTS ${PKGCOMP}_INCLUDE_NAMES)
-                if (EXISTS ${dir}/${iname})
-                    set (${PKGCOMP}_PREFIX ${dir})
-                    set (${PKGCOMP}_INCLUDE_DIR ${dir})
-                    break ()
-                endif ()
-                if (EXISTS ${dir}/include/${iname})
-                    set (${PKGCOMP}_PREFIX ${dir})
-                    set (${PKGCOMP}_INCLUDE_DIR ${dir}/include)
-                    break ()
-                endif ()
-            endforeach ()
+        find_library(${PKGCOMP}_LIBRARY
+                     NAMES ${${PKGCOMP}_LIBRARY_NAMES}
+                     HINTS ${SEARCH_DIRS}
+                     PATHS ${SEARCH_DIRS}
+                     PATH_SUFFIXES lib lib64)
 
-            # Search for library file names in the found prefix only!
-            if (${PKGCOMP}_PREFIX)
-                find_library (${PKGCOMP}_LIBRARY
-                              NAMES ${${PKGCOMP}_LIBRARY_NAMES}
-                              PATHS ${${PKGCOMP}_PREFIX}
-                              PATH_SUFFIXES lib
-                              NO_DEFAULT_PATH)
+        # If found, check if library is static or dynamic
+        if (${PKGCOMP}_LIBRARY)
+            is_shared_library (${PKGCOMP}_IS_SHARED ${${PKGCOMP}_LIBRARY})
 
-                # If found, check if library is static or dynamic
-                if (${PKGCOMP}_LIBRARY)
-                    is_shared_library (${PKGCOMP}_IS_SHARED ${${PKGCOMP}_LIBRARY})
-
-                    # If we want only shared libraries, and it isn't shared...
-                    if (PREFER_SHARED AND NOT ${PKGCOMP}_IS_SHARED)
-                        find_shared_library (${PKGCOMP}_SHARED_LIBRARY
-                                             NAMES ${${PKGCOMP}_LIBRARY_NAMES}
-                                             PATHS ${${PKGCOMP}_PREFIX}
-                                             PATH_SUFFIXES lib
-                                             NO_DEFAULT_PATH)
-                        if (${PKGCOMP}_SHARED_LIBRARY)
-                            set (${PKGCOMP}_LIBRARY ${${PKGCOMP}_SHARED_LIBRARY})
-                            set (${PKGCOMP}_IS_SHARED TRUE)
-                        endif ()
-
-                    # If we want only static libraries, and it is shared...
-                    elseif (PREFER_STATIC AND ${PKGCOMP}_IS_SHARED)
-                        find_static_library (${PKGCOMP}_STATIC_LIBRARY
-                                             NAMES ${${PKGCOMP}_LIBRARY_NAMES}
-                                             PATHS ${${PKGCOMP}_PREFIX}
-                                             PATH_SUFFIXES lib
-                                             NO_DEFAULT_PATH)
-                        if (${PKGCOMP}_STATIC_LIBRARY)
-                            set (${PKGCOMP}_LIBRARY ${${PKGCOMP}_STATIC_LIBRARY})
-                            set (${PKGCOMP}_IS_SHARED FALSE)
-                        endif ()
-                    endif ()
-                endif ()
-
-                # If include dir and library both found, then we're done
-                if (${PKGCOMP}_INCLUDE_DIR AND ${PKGCOMP}_LIBRARY)
-                    break ()
-
-                # Otherwise, reset the search variables and continue
-                else ()
-                    set (${PKGCOMP}_PREFIX ${PKGCOMP}_PREFIX-NOTFOUND)
-                    set (${PKGCOMP}_INCLUDE_DIR ${PKGCOMP}_INCLUDE_DIR-NOTFOUND)
-                    set (${PKGCOMP}_LIBRARY ${PKGCOMP}_LIBRARY-NOTFOUND)
-                endif ()
+            # Handle preference for shared or static libraries
+            if (PREFER_SHARED AND NOT ${PKGCOMP}_IS_SHARED)
+                # Logic for shared preference could be added here
+            elseif (PREFER_STATIC AND ${PKGCOMP}_IS_SHARED)
+                # Logic for static preference could be added here
             endif ()
-
-        endforeach ()
+        endif ()
 
         # handle the QUIETLY and REQUIRED arguments and
         # set NetCDF_C_FOUND to TRUE if all listed variables are TRUE
